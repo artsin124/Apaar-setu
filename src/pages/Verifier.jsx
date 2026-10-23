@@ -4,7 +4,10 @@ import { Brand } from '../components/Shell.jsx'
 import { CameraScanner, decodeQrFile } from '../components/QrScanner.jsx'
 import { Avatar, Badge, Button, Segmented, inputBase, inputClass } from '../components/ui.jsx'
 import { VERIFIER_ORGS } from '../data/mock.js'
-import { shortCode, tamperToken, verifyCredential } from '../lib/credential.js'
+import { shortCode, tamperToken } from '../lib/credential.js'
+import { verifyCredential } from '../api/index.js'
+import { GovFooter, GovStrip } from '../components/GovChrome.jsx'
+import { usePrefs } from '../state/Prefs.jsx'
 import { downloadText } from '../lib/csv.js'
 import { Link } from '../lib/router.jsx'
 import { cx, dateOnly, dateTime } from '../lib/format.js'
@@ -49,6 +52,7 @@ function RecordCard({ p }) {
 
 export default function Verifier({ params }) {
   const { credential, consentFor, log } = useAppState()
+  const { t } = usePrefs()
   const [mode, setMode] = useState('paste')
   const [org, setOrg] = useState('infosys')
   const [code, setCode] = useState(params.get('t') ?? '')
@@ -136,7 +140,8 @@ export default function Verifier({ params }) {
   const showDetails = result?.status === 'verified' && result.consent?.state === 'active'
 
   return (
-    <div className="min-h-screen bg-surface">
+    <div className="flex min-h-screen flex-col bg-surface">
+      <GovStrip />
       <header className="border-b border-line-soft bg-card">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-4 px-5 py-4">
           <Link to="/">
@@ -144,7 +149,7 @@ export default function Verifier({ params }) {
           </Link>
           <div className="ml-auto flex items-center gap-2">
             <label htmlFor="org" className="text-[13px] text-muted">
-              Verifying as
+              {t('Verifying as')}
             </label>
             <select id="org" className={cx(inputBase, 'h-9')} value={org} onChange={(e) => setOrg(e.target.value)}>
               {VERIFIER_ORGS.map((o) => (
@@ -157,8 +162,8 @@ export default function Verifier({ params }) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-5 py-8">
-        <h1 className="text-[30px] leading-10 font-bold text-primary">Verify a student credential</h1>
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-5xl flex-1 px-5 py-8 outline-none">
+        <h1 className="text-[30px] leading-10 font-bold text-primary">{t('Verify a student credential')}</h1>
         <p className="mt-1 max-w-2xl text-muted">
           Every APAAR Setu credential is digitally signed by AICTE. If anyone changes a single character, the signature
           check fails. The student decides which organisations can see their details.
@@ -345,6 +350,7 @@ export default function Verifier({ params }) {
           ))}
         </section>
       </main>
+      <GovFooter />
     </div>
   )
 }

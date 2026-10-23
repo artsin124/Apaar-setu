@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { INITIAL_ACTIVITY, INITIAL_GRANTS, STUDENT } from '../data/mock.js'
-import { issueCredential } from '../lib/credential.js'
+import { issueCredential } from '../api/index.js'
 
 // Shared demo state: the student's consent grants, their credential and the
 // access log. Persisted in localStorage so the demo survives a refresh; a real

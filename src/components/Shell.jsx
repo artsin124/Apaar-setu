@@ -3,6 +3,8 @@ import Icon from './Icon.jsx'
 import { Avatar } from './ui.jsx'
 import { Link } from '../lib/router.jsx'
 import { cx } from '../lib/format.js'
+import { GovFooter, GovStrip } from './GovChrome.jsx'
+import { usePrefs } from '../state/Prefs.jsx'
 
 export function LogoMark({ size = 32, className }) {
   // A bridge ("setu") arching over a baseline of record dots.
@@ -30,6 +32,7 @@ export function Brand({ subtitle, dark = true }) {
 
 export default function Shell({ subtitle, context, nav, user, crumbs, topExtra, children }) {
   const [open, setOpen] = useState(false)
+  const { t } = usePrefs()
 
   const sidebar = (
     <div className="flex h-full flex-col bg-primary-2 text-white">
@@ -52,7 +55,7 @@ export default function Shell({ subtitle, context, nav, user, crumbs, topExtra, 
             )}
           >
             <Icon name={item.icon} size={18} />
-            <span className="flex-1">{item.label}</span>
+            <span className="flex-1">{t(item.label)}</span>
             {item.badge && <span className="rounded-sm bg-err px-1.5 py-0.5 font-mono text-[11px] font-semibold text-white">{item.badge}</span>}
           </a>
         ))}
@@ -63,20 +66,21 @@ export default function Shell({ subtitle, context, nav, user, crumbs, topExtra, 
           Registry sync live
         </div>
         <Link to="/" className="mt-3 inline-flex items-center gap-1.5 text-white/80 hover:text-white">
-          <Icon name="switch" size={15} /> Switch portal
+          <Icon name="switch" size={15} /> {t('Switch portal')}
         </Link>
       </div>
     </div>
   )
 
   return (
-    <div className="min-h-screen lg:pl-[248px]">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[248px] lg:block">{sidebar}</aside>
+    <div className="flex min-h-screen flex-col lg:pl-62">
+      <GovStrip />
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-62 lg:block">{sidebar}</aside>
 
       {open && (
         <div className="fixed inset-0 z-50 lg:hidden" onClick={() => setOpen(false)}>
           <div className="absolute inset-0 bg-primary/40" />
-          <aside className="absolute inset-y-0 left-0 w-[260px]" onClick={(e) => e.stopPropagation()}>
+          <aside className="absolute inset-y-0 left-0 w-65" onClick={(e) => e.stopPropagation()}>
             {sidebar}
           </aside>
         </div>
@@ -90,7 +94,7 @@ export default function Shell({ subtitle, context, nav, user, crumbs, topExtra, 
           {crumbs.map((c, i) => (
             <span key={c} className={cx('truncate', i === crumbs.length - 1 && 'font-medium text-ink')}>
               {i > 0 && <span className="mr-1.5 text-subtle">/</span>}
-              {c}
+              {t(c)}
             </span>
           ))}
         </nav>
@@ -105,7 +109,10 @@ export default function Shell({ subtitle, context, nav, user, crumbs, topExtra, 
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-350 flex-1 px-4 py-6 outline-none sm:px-6 lg:px-8">
+        {children}
+      </main>
+      <GovFooter />
     </div>
   )
 }

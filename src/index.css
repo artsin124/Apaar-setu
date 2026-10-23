@@ -2,9 +2,10 @@
 
 /* Design tokens carried over from the Stitch "APAAR Setu" design system */
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-display: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* Noto Sans, as used across Government of India websites; Devanagari for Hindi */
+  --font-sans: "Noto Sans", "Noto Sans Devanagari", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Noto Sans", "Noto Sans Devanagari", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Noto Sans Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   --color-ink: #161c27;
   --color-muted: #45464f;
@@ -52,7 +53,10 @@
   }
   h1, h2, h3 {
     font-family: var(--font-display);
-    letter-spacing: -0.015em;
+    letter-spacing: -0.01em;
+  }
+  body {
+    font-variant-numeric: tabular-nums;
   }
   :focus-visible {
     outline: 2px solid var(--color-saffron-2);
@@ -82,3 +86,34 @@
 .scanline {
   animation: scanline 2.2s ease-in-out infinite alternate;
 }
+
+/* GIGW accessibility: high-contrast mode (toggled from the top strip) */
+html[data-contrast="high"] {
+  --color-ink: #ffffff;
+  --color-muted: #f2f2f2;
+  --color-subtle: #d9d9d9;
+  --color-line: #ffffff;
+  --color-line-soft: #8a8a8a;
+  --color-surface: #000000;
+  --color-surface-low: #111111;
+  --color-surface-mid: #222222;
+  --color-card: #000000;
+  --color-primary: #000000;
+  --color-primary-2: #000000;
+  --color-primary-3: #ffff00;
+  --color-primary-tint: #222222;
+  --color-primary-soft: #ffff00;
+  --color-saffron: #ffff00;
+  --color-saffron-bg: #222222;
+  --color-ok: #7dff9c;
+  --color-ok-bg: #002b10;
+  --color-err: #ff7a7a;
+  --color-err-bg: #330000;
+  --color-warn: #ffd84d;
+  --color-warn-bg: #2b2200;
+}
+html[data-contrast="high"] a { text-decoration: underline; }
+html[data-contrast="high"] .text-primary { color: #ffff00; }
+html[data-contrast="high"] .seat-fill { background: #ffff00; }
+html[data-contrast="high"] button.bg-primary-2 { background: #ffff00; color: #000; }
+html[data-contrast="high"] [class*="border"] { border-color: #8a8a8a; }

@@ -86,11 +86,11 @@ export function CameraScanner({ onResult }) {
 
   return (
     <div>
-      <div className="relative mx-auto aspect-[4/3] w-full max-w-[460px] overflow-hidden rounded-lg bg-primary">
+      <div className="relative mx-auto aspect-4/3 w-full max-w-115 overflow-hidden rounded-lg bg-primary">
         <video ref={videoRef} playsInline muted className={state === 'scanning' ? 'h-full w-full object-cover' : 'hidden'} />
         <canvas ref={canvasRef} className="hidden" />
         <div className="pointer-events-none absolute inset-[16%] rounded-md">
-          {['top-0 left-0 border-t-[3px] border-l-[3px]', 'top-0 right-0 border-t-[3px] border-r-[3px]', 'bottom-0 left-0 border-b-[3px] border-l-[3px]', 'bottom-0 right-0 border-b-[3px] border-r-[3px]'].map((c) => (
+          {['top-0 left-0 border-t-3 border-l-3', 'top-0 right-0 border-t-3 border-r-3', 'bottom-0 left-0 border-b-3 border-l-3', 'bottom-0 right-0 border-b-3 border-r-3'].map((c) => (
             <span key={c} className={`absolute size-7 border-saffron-2 ${c}`} />
           ))}
           {state === 'scanning' && <span className="scanline absolute inset-x-2 top-0 h-0.5 bg-saffron-2/80" />}

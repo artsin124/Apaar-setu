@@ -206,7 +206,7 @@ export function Drawer({ open, title, onClose, children, footer }) {
 export function Toast({ message }) {
   if (!message) return null
   return (
-    <div role="status" className="fixed bottom-5 left-1/2 z-[60] -translate-x-1/2 rounded-md bg-primary px-4 py-2.5 text-sm text-white shadow-lg">
+    <div role="status" className="fixed bottom-5 left-1/2 z-60 -translate-x-1/2 rounded-md bg-primary px-4 py-2.5 text-sm text-white shadow-lg">
       {message}
     </div>
   )

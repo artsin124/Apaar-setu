@@ -1,11 +1,12 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Shell from '../components/Shell.jsx'
 import Icon from '../components/Icon.jsx'
 import { Badge, Button, Meter, Panel, Segmented, Severity, inputBase, inputClass } from '../components/ui.jsx'
 import { ACADEMIC_YEAR, MY_INSTITUTION, MY_PROGRAMMES } from '../data/mock.js'
 import { CSV_HEADERS, sampleRowsClean, sampleRowsWithIssues } from '../data/registry.js'
 import { downloadText, parseCsv, toCsv } from '../lib/csv.js'
-import { validateRows, sha256Hex } from '../lib/validation.js'
+import { submitBatch, validateBatch } from '../api/index.js'
+import { usePrefs } from '../state/Prefs.jsx'
 import { apaar as fmtApaar, cx, dateTime, inr, pct } from '../lib/format.js'
 
 const NAV = [
@@ -62,10 +63,28 @@ export default function InstitutionUpload() {
   const [receipt, setReceipt] = useState(null)
   const fileRef = useRef(null)
 
-  const result = useMemo(
-    () => (rows.length ? validateRows(rows, { institutionName: MY_INSTITUTION.name, programmes: MY_PROGRAMMES }) : null),
-    [rows],
-  )
+  const [result, setResult] = useState(null)
+  const [checking, setChecking] = useState(false)
+  const { t } = usePrefs()
+
+  useEffect(() => {
+    if (!rows.length) {
+      setResult(null)
+      return
+    }
+    let live = true
+    setResult(null)
+    setChecking(true)
+    validateBatch(rows).then((r) => {
+      if (live) {
+        setResult(r)
+        setChecking(false)
+      }
+    })
+    return () => {
+      live = false
+    }
+  }, [rows])
 
   const loadText = (text, name) => {
     const { headers, records } = parseCsv(text)
@@ -137,13 +156,8 @@ export default function InstitutionUpload() {
   }
 
   const submit = async () => {
-    const hash = await sha256Hex(fileText)
-    setReceipt({
-      id: `AICTE-SUB-2026-${hash.slice(0, 6).toUpperCase()}`,
-      hash,
-      at: new Date().toISOString(),
-      students: result.total,
-    })
+    const r = await submitBatch(fileText, result.total)
+    setReceipt({ id: r.acknowledgement, hash: r.sha256, at: r.submittedAt, students: r.students })
     setStage('submitted')
     window.scrollTo(0, 0)
   }
@@ -159,7 +173,7 @@ export default function InstitutionUpload() {
     >
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-[28px] leading-9 font-bold text-primary">Upload student data</h1>
+          <h1 className="text-[28px] leading-9 font-bold text-primary">{t('Upload student data')}</h1>
           <p className="mt-1 max-w-2xl text-muted">
             One row per admitted student, keyed by APAAR ID. Every row is checked against the APAAR registry and your
             approved intake before it reaches AICTE.
@@ -251,6 +265,8 @@ export default function InstitutionUpload() {
           </p>
         </section>
       )}
+
+      {stage === 'validated' && checking && !result && <div className="py-16 text-center text-muted">Checking every row against the APAAR registry…</div>}
 
       {stage === 'validated' && result && (
         <>
@@ -365,7 +381,7 @@ export default function InstitutionUpload() {
             ) : (
               <>
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[920px] text-left text-[13.5px]">
+                  <table className="w-full min-w-230 text-left text-[13.5px]">
                     <thead className="bg-surface-low text-[12.5px] text-muted">
                       <tr>
                         <th className="px-5 py-3 font-medium">Row</th>
@@ -392,7 +408,7 @@ export default function InstitutionUpload() {
                             <div className="text-[12.5px] text-muted">{i.detail}</div>
                           </td>
                           <td className="px-3 py-3.5 align-top"><Severity level={i.severity} /></td>
-                          <td className="max-w-[260px] px-5 py-3.5 align-top text-[13px] text-muted">{i.fix}</td>
+                          <td className="max-w-65 px-5 py-3.5 align-top text-[13px] text-muted">{i.fix}</td>
                         </tr>
                       ))}
                       {!shown.length && (

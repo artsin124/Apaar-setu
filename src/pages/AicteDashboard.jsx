@@ -1,103 +1,164 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Shell from '../components/Shell.jsx'
 import Icon from '../components/Icon.jsx'
-import { Badge, Button, Drawer, Panel, Segmented, Severity, Toast, inputBase, inputClass } from '../components/ui.jsx'
-import { ACADEMIC_YEAR, ANOMALIES, ANOMALY_TYPES, INTAKE_VIOLATORS, KPIS, PROGRAMMES, regionStats } from '../data/mock.js'
+import { Button, Drawer, Toast, inputBase, inputClass } from '../components/ui.jsx'
+import { ACADEMIC_YEAR, PROGRAMMES } from '../data/mock.js'
+import { getOverview, listAnomalies, runDeduplication, updateAnomaly } from '../api/index.js'
 import { cx, dateTime, inr, pct } from '../lib/format.js'
 import { downloadText, toCsv } from '../lib/csv.js'
-import { navigate } from '../lib/router.jsx'
+import { HI } from '../lib/i18n.js'
 
 const NAV = [
   { label: 'National overview', icon: 'dashboard', to: '/aicte', active: true },
   { label: 'Institutions & intake', icon: 'building' },
-  { label: 'Student registry', icon: 'users' },
-  { label: 'Anomaly hub', icon: 'alert', badge: inr(KPIS.openAnomalies) },
+  { label: 'Student register', icon: 'users' },
+  { label: 'Anomalies', icon: 'alert', badge: '1,286' },
   { label: 'Verification ledger', icon: 'shieldCheck', to: '/verify' },
   { label: 'Compliance reports', icon: 'file' },
 ]
 
 const STATUS = {
-  open: { tone: 'err', label: 'Open' },
-  review: { tone: 'warn', label: 'Under review' },
-  notice: { tone: 'info', label: 'Notice issued' },
-  dismissed: { tone: 'neutral', label: 'Dismissed' },
+  open: { label: 'Open', color: 'bg-err' },
+  review: { label: 'Under review', color: 'bg-subtle' },
+  notice: { label: 'Notice issued', color: 'bg-saffron-2' },
+  dismissed: { label: 'Dismissed', color: 'bg-line' },
 }
+const SEVERITY = { critical: 'Critical', high: 'High', medium: 'Medium' }
 
-function Kpi({ label, value, note, tone, children }) {
+// Heading with its Hindi equivalent, as on government registers
+function RegisterHeading({ en, children, right }) {
   return (
-    <div className={cx('rounded-lg border bg-card p-5', tone === 'err' ? 'border-err/30' : 'border-line-soft')}>
-      <div className="text-[13px] text-muted">{label}</div>
-      <div className={cx('mt-2 font-mono text-[30px] leading-9 font-semibold tracking-tight tnum', tone === 'err' ? 'text-err' : 'text-primary')}>
-        {value}
-      </div>
-      {note && <div className="mt-1 text-[13px] text-muted">{note}</div>}
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-2 border-b border-ink pb-2">
+      <h2 className="text-[16px] font-bold text-ink">{en}</h2>
+      {HI[en] && (
+        <span lang="hi" className="text-[13.5px] text-primary-3">
+          {HI[en]}
+        </span>
+      )}
       {children}
+      {right && <div className="ml-auto flex flex-wrap items-center gap-3">{right}</div>}
     </div>
   )
 }
 
+// Underlined text tabs instead of pill buttons
+function TextTabs({ label, options, value, onChange }) {
+  return (
+    <div className="flex items-baseline gap-1 text-[13px] text-muted" role="group" aria-label={label}>
+      <span className="mr-1">{label}:</span>
+      {options.map((o, i) => {
+        const v = typeof o === 'string' ? o : o.value
+        const l = typeof o === 'string' ? o : o.label
+        return (
+          <span key={v} className="flex items-baseline gap-1">
+            {i > 0 && <span className="text-subtle">·</span>}
+            <button
+              type="button"
+              aria-pressed={v === value}
+              onClick={() => onChange(v)}
+              className={cx('px-0.5 hover:text-ink', v === value && 'border-b-[1.5px] border-primary-2 font-semibold text-ink')}
+            >
+              {l}
+            </button>
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
+function SeatsBar({ sanctioned, enrolled }) {
+  // Track runs to 110% so overshoots stay visible; the tick marks 100%.
+  const cap = 1.1
+  const ratio = enrolled / sanctioned
+  const within = (Math.min(ratio, 1) / cap) * 100
+  const over = ratio > 1 ? ((Math.min(ratio, cap) - 1) / cap) * 100 : 0
+  return (
+    <div className="relative h-2.5 w-full max-w-60 bg-surface-mid" role="img" aria-label={`${pct(enrolled, sanctioned)}% of sanctioned seats used`}>
+      <div className="seat-fill absolute inset-y-0 left-0 bg-primary-2" style={{ width: `${within}%` }} />
+      {over > 0 && <div className="absolute inset-y-0 bg-err" style={{ left: `${100 / cap}%`, width: `${over}%` }} />}
+      <div className="absolute -inset-y-1 w-[1.5px] bg-ink" style={{ left: `${100 / cap}%` }} />
+    </div>
+  )
+}
+
+const urgentEdge = { boxShadow: 'inset 3px 0 0 var(--color-err)', paddingLeft: '10px' }
+
 export default function AicteDashboard() {
   const [programme, setProgramme] = useState('All')
-  const [region, setRegion] = useState('all')
+  const [overview, setOverview] = useState(null)
+  const [anomalies, setAnomalies] = useState([])
+  const [region, setRegion] = useState(null)
   const [sev, setSev] = useState('all')
   const [q, setQ] = useState('')
-  const [statuses, setStatuses] = useState({})
   const [openId, setOpenId] = useState(null)
   const [note, setNote] = useState('')
   const [toast, setToast] = useState('')
-  const [dedupe, setDedupe] = useState({ running: false, last: '2026-10-23T09:24:00+05:30' })
-  const [token, setToken] = useState('')
+  const [deduping, setDeduping] = useState(false)
 
   const flash = (m) => {
     setToast(m)
     setTimeout(() => setToast(''), 2600)
   }
 
-  const regions = useMemo(() => regionStats(programme), [programme])
-  const shownRegions = region === 'all' ? regions : regions.filter((r) => r.id === region)
-  const scaleMax = Math.max(...regions.map((r) => Math.max(r.sanctioned, r.enrolled)))
-  const regionName = regions.find((r) => r.id === region)?.name
+  useEffect(() => {
+    getOverview({ programme }).then(setOverview)
+  }, [programme])
 
-  const anomalies = ANOMALIES.filter((a) => {
-    if (sev !== 'all' && a.severity !== sev) return false
-    if (region !== 'all' && a.region !== regionName) return false
-    if (q) {
-      const s = q.toLowerCase()
-      return [a.institution, a.code, a.city, a.id, ANOMALY_TYPES[a.type]].some((v) => v.toLowerCase().includes(s))
-    }
-    return true
-  })
+  useEffect(() => {
+    listAnomalies().then(setAnomalies)
+  }, [])
 
-  const open = ANOMALIES.find((a) => a.id === openId)
-  const setStatus = (id, s, msg) => {
-    setStatuses((x) => ({ ...x, [id]: s }))
+  const refresh = async () => {
+    const [o, a] = await Promise.all([getOverview({ programme }), listAnomalies()])
+    setOverview(o)
+    setAnomalies(a)
+  }
+
+  const act = async (id, status, msg) => {
+    await updateAnomaly(id, { status, note })
     setOpenId(null)
     setNote('')
     flash(msg)
+    refresh()
   }
 
-  const runDedupe = () => {
-    setDedupe((d) => ({ ...d, running: true }))
-    setTimeout(() => {
-      setDedupe({ running: false, last: new Date().toISOString() })
-      flash('Deduplication finished: 18,42,310 records checked, no new matches since the last run')
-    }, 1600)
+  const dedupe = async () => {
+    setDeduping(true)
+    const r = await runDeduplication()
+    setDeduping(false)
+    flash(`Deduplication finished: ${inr(r.checked)} records checked, ${r.newMatches} new matches`)
+    refresh()
   }
 
   const exportReport = () => {
-    const rows = ANOMALIES.map((a) => ({
-      id: a.id,
+    const rows = anomalies.map((a) => ({
+      reference: a.ref,
       severity: a.severity,
-      type: ANOMALY_TYPES[a.type],
+      finding: a.typeLabel,
       institution: a.institution,
       code: a.code,
       region: a.region,
-      students_affected: a.affected,
+      students: a.affected,
       detected: a.detected,
-      status: STATUS[statuses[a.id] ?? 'open'].label,
+      status: STATUS[a.status].label,
     }))
-    downloadText('aicte-anomaly-report.csv', toCsv(Object.keys(rows[0]), rows))
+    downloadText('aicte-anomaly-register.csv', toCsv(Object.keys(rows[0]), rows))
   }
+
+  const regionName = overview?.regions.find((r) => r.id === region)?.name
+  const shown = anomalies.filter((a) => {
+    if (sev !== 'all' && a.severity !== sev) return false
+    if (regionName && a.region !== regionName) return false
+    if (q) {
+      const s = q.toLowerCase()
+      return [a.institution, a.code, a.city, a.ref, a.typeLabel].some((v) => v.toLowerCase().includes(s))
+    }
+    return true
+  })
+  const open = anomalies.find((a) => a.id === openId)
+  const h = overview?.headline
+  const k = overview?.kpis
 
   return (
     <Shell
@@ -106,237 +167,221 @@ export default function AicteDashboard() {
       nav={NAV}
       user={{ name: 'Dr. Alok Singh', role: 'Joint Secretary, Approval Bureau' }}
       crumbs={['AICTE HQ, New Delhi', 'National overview']}
-      topExtra={<Badge tone="info">{ACADEMIC_YEAR}</Badge>}
     >
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-[13px] text-ok">
-            <span className="size-2 rounded-full bg-ok" />
-            Last deduplication run {dateTime(dedupe.last)}
+      {!overview ? (
+        <div className="py-24 text-center text-muted">Loading the national ledger…</div>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-muted">
+            <span>Approval Bureau, AICTE HQ</span>
+            <span className="border-l border-line pl-4">File {overview.fileRef}</span>
+            <span className="border-l border-line pl-4">{ACADEMIC_YEAR}</span>
+            <span className="border-l border-line pl-4">Ledger updated {dateTime(overview.updatedAt)}</span>
           </div>
-          <h1 className="mt-2 text-[28px] leading-9 font-bold text-primary">National overview</h1>
-          <p className="mt-1 max-w-2xl text-muted">
-            APAAR-linked enrolment against sanctioned intake, and anomalies across all reporting institutions.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button icon="download" onClick={exportReport}>
-            Export report
-          </Button>
-          <Button variant="primary" icon={dedupe.running ? 'refresh' : 'layers'} onClick={runDedupe} disabled={dedupe.running}>
-            {dedupe.running ? 'Running…' : 'Run deduplication'}
-          </Button>
-        </div>
-      </div>
 
-      <div className="mt-6 flex flex-wrap items-end gap-4 rounded-lg border border-line-soft bg-card p-4">
-        <label className="min-w-[180px]">
-          <span className="mb-1.5 block text-[13px] text-muted">Region</span>
-          <select className={inputClass} value={region} onChange={(e) => setRegion(e.target.value)}>
-            <option value="all">All regions</option>
-            {regions.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
+          <div className="mt-4 flex flex-wrap items-baseline gap-x-3">
+            <h1 className="text-[15px] font-semibold text-muted">National overview</h1>
+            <span lang="hi" className="text-[14px] text-primary-3">
+              राष्ट्रीय अवलोकन
+            </span>
+          </div>
+
+          <div className="mt-1.5 flex flex-wrap items-end justify-between gap-6">
+            <div className="max-w-220">
+              <p className="text-[30px] leading-9.5 font-bold tracking-tight text-ink">
+                <span className="text-err">{h.institutionsOverIntake} institutions</span> admitted more students than they
+                were sanctioned for this year.
+              </p>
+              <p className="mt-2 text-[16px] leading-6 text-muted">
+                <span className="font-semibold text-ink">
+                  {h.needsNoticeToday} {h.needsNoticeToday === 1 ? 'case needs' : 'cases need'} a notice from you.
+                </span>{' '}
+                {inr(h.studentsAtMultipleInstitutions)} students appear at more than one institution, and{' '}
+                {inr(h.institutionsNotReported)} institutions haven’t submitted data before the {h.reportingDue} deadline.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button icon="download" onClick={exportReport}>
+                Export register
+              </Button>
+              <Button variant="primary" icon={deduping ? 'refresh' : 'layers'} onClick={dedupe} disabled={deduping}>
+                {deduping ? 'Running…' : 'Run deduplication'}
+              </Button>
+            </div>
+          </div>
+
+          <dl className="mt-7 grid border-t border-b border-t-ink border-b-line sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              ['Students registered with APAAR ID', inr(k.studentsRegistered), `+${inr(k.studentsThisCycle)} this cycle`],
+              ['Institutions reporting', inr(k.institutionsReporting), `of ${inr(k.institutionsTotal)} · due ${k.reportingDue}`],
+              ['Institutions over sanctioned intake', k.intakeBreaches, `${inr(k.excessSeats)} excess students`, true],
+              ['Open anomalies', inr(k.openAnomalies), `${k.crossInstitutionDuplicates} cross-institution`],
+            ].map(([label, value, sub, bad], i) => (
+              <div key={label} className={cx('py-3.5 pr-4', i > 0 && 'xl:border-l xl:border-line xl:pl-5', i % 2 === 1 && 'sm:border-l sm:border-line sm:pl-5')}>
+                <dt className="text-[12.5px] text-muted">{label}</dt>
+                <dd className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
+                  <span className={cx('text-[24px] leading-8 font-semibold', bad ? 'text-err' : 'text-ink')}>{value}</span>
+                  <span className="text-[13px] text-muted">{sub}</span>
+                </dd>
+              </div>
             ))}
-          </select>
-        </label>
-        <div className="max-w-full">
-          <span className="mb-1.5 block text-[13px] text-muted">Programme</span>
-          <Segmented options={PROGRAMMES} value={programme} onChange={setProgramme} />
-        </div>
-      </div>
+          </dl>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi label="Students registered with APAAR" value={inr(KPIS.studentsRegistered)} note={`+${inr(KPIS.studentsThisCycle)} this cycle · ${KPIS.apaarValidPct}% IDs valid`} />
-        <Kpi label="Institutions reporting" value={inr(KPIS.institutionsReporting)} note={`of ${inr(KPIS.institutionsTotal)} · due ${KPIS.reportingDue}`}>
-          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-mid">
-            <div className="h-full bg-primary-2" style={{ width: `${pct(KPIS.institutionsReporting, KPIS.institutionsTotal)}%` }} />
-          </div>
-        </Kpi>
-        <Kpi label="Institutions over sanctioned intake" value={KPIS.intakeBreaches} tone="err" note={`${inr(KPIS.excessSeats)} students above sanctioned seats`} />
-        <Kpi label="Open anomalies" value={inr(KPIS.openAnomalies)} note={`${KPIS.crossInstitutionDuplicates} cross-institution duplicates`} />
-      </div>
-
-      <div className="mt-6 grid items-start gap-6 xl:grid-cols-3">
-        <Panel
-          className="xl:col-span-2"
-          icon="scale"
-          title="Sanctioned intake vs. APAAR-verified enrolment"
-          subtitle={`By AICTE region · ${programme === 'All' ? 'all programmes' : programme}`}
-          actions={
-            <div className="flex items-center gap-4 text-[12.5px] text-muted">
-              <span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-sm bg-primary-2" /> Sanctioned</span>
-              <span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-sm bg-saffron-2" /> Enrolled</span>
-              <span className="flex items-center gap-1.5"><span className="h-2 w-4 rounded-sm bg-err" /> Over intake</span>
-            </div>
-          }
-        >
-          <ul className="divide-y divide-line-soft">
-            {shownRegions.map((r) => {
-              const over = r.enrolled > r.sanctioned
-              const util = pct(r.enrolled, r.sanctioned)
-              return (
-                <li key={r.id} className="py-4 first:pt-0 last:pb-0">
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                    <div className="min-w-0">
-                      <span className="font-semibold text-ink">{r.name}</span>
-                      <span className="ml-2 text-[12.5px] text-muted">{r.states}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {over ? <Badge tone="err">+{(util - 100).toFixed(1)}% over</Badge> : <Badge tone="ok">{util}% filled</Badge>}
-                      <span className="font-mono text-[13px] text-ink tnum">
-                        {inr(r.enrolled)} <span className="text-subtle">/ {inr(r.sanctioned)}</span>
-                      </span>
-                    </div>
-                  </div>
-                  <div className="mt-2.5 space-y-1">
-                    <div className="h-2 rounded-full bg-primary-2" style={{ width: `${(r.sanctioned / scaleMax) * 100}%` }} />
-                    <div className="flex h-2" style={{ width: `${(r.enrolled / scaleMax) * 100}%` }}>
-                      <div className={cx('h-full bg-saffron-2', over ? 'rounded-l-full' : 'rounded-full')} style={{ width: `${(Math.min(r.enrolled, r.sanctioned) / r.enrolled) * 100}%` }} />
-                      {over && <div className="h-full flex-1 rounded-r-full bg-err" />}
-                    </div>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        </Panel>
-
-        <div className="space-y-6">
-          <Panel icon="alert" title="Largest intake breaches" subtitle="Uploaded regular admissions vs. sanctioned seats" bodyClassName="p-0">
-            <ul className="divide-y divide-line-soft">
-              {INTAKE_VIOLATORS.map((v) => {
-                const extra = v.uploaded - v.sanctioned
-                return (
-                  <li key={v.name} className="px-5 py-3.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate font-medium text-ink">{v.name}</div>
-                        <div className="text-[12.5px] text-muted">
-                          {v.city} · {v.programme}
-                        </div>
-                      </div>
-                      <span className="shrink-0 rounded-sm bg-err px-1.5 py-0.5 font-mono text-[12px] font-semibold text-white">
-                        +{(pct(extra, v.sanctioned)).toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="mt-1.5 font-mono text-[12.5px] text-muted tnum">
-                      {v.sanctioned} sanctioned · {v.uploaded} uploaded · <span className="text-err">+{extra}</span>
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
-          </Panel>
-
-          <Panel icon="qr" title="Quick verification" subtitle="Paste a credential code from a student QR">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                navigate(token.trim() ? `/verify?t=${encodeURIComponent(token.trim())}` : '/verify')
-              }}
-              className="flex gap-2"
-            >
-              <input className={cx(inputClass, 'font-mono text-[13px]')} placeholder="AS1.eyJ2Ijox…" value={token} onChange={(e) => setToken(e.target.value)} aria-label="Credential code" />
-              <Button variant="primary" type="submit" icon="arrowRight" aria-label="Verify" />
-            </form>
-          </Panel>
-        </div>
-      </div>
-
-      <Panel
-        className="mt-6"
-        icon="shield"
-        title="Integrity and intake anomalies"
-        subtitle="Raised automatically when APAAR records conflict across institutions or with sanctioned intake"
-        bodyClassName="p-0"
-        actions={
-          <>
-            <div className="relative">
-              <Icon name="search" size={16} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-subtle" />
-              <input className={cx(inputBase, 'h-8 w-56 pl-8 text-[13px]')} placeholder="Institution, code or ID" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search anomalies" />
-            </div>
-            <Segmented
-              options={[
-                { value: 'all', label: 'All' },
-                { value: 'critical', label: 'Critical' },
-                { value: 'high', label: 'High' },
-                { value: 'medium', label: 'Medium' },
-              ]}
-              value={sev}
-              onChange={setSev}
+          <section className="mt-10">
+            <RegisterHeading
+              en="Regional intake register"
+              right={<TextTabs label="Programme" options={PROGRAMMES} value={programme} onChange={setProgramme} />}
             />
-          </>
-        }
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-left text-[13.5px]">
-            <thead className="bg-surface-low text-[12.5px] text-muted">
-              <tr>
-                <th className="px-5 py-3 font-medium">Severity</th>
-                <th className="px-3 py-3 font-medium">Anomaly</th>
-                <th className="px-3 py-3 font-medium">Institution</th>
-                <th className="px-3 py-3 text-right font-medium">Students</th>
-                <th className="px-3 py-3 font-medium">Detected</th>
-                <th className="px-3 py-3 font-medium">Status</th>
-                <th className="px-5 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line-soft">
-              {anomalies.map((a) => {
-                const st = STATUS[statuses[a.id] ?? 'open']
-                return (
-                  <tr key={a.id} className={cx(a.severity === 'critical' && !statuses[a.id] && 'bg-err-bg/35')}>
-                    <td className="px-5 py-3.5 align-top"><Severity level={a.severity} /></td>
-                    <td className="px-3 py-3.5 align-top">
-                      <div className="font-medium text-ink">{ANOMALY_TYPES[a.type]}</div>
-                      <div className="text-[12.5px] text-muted">{a.summary}</div>
-                    </td>
-                    <td className="px-3 py-3.5 align-top">
-                      <div className="text-ink">{a.institution}</div>
-                      <div className="font-mono text-[12px] text-muted">{a.city} · {a.code}</div>
-                    </td>
-                    <td className="px-3 py-3.5 text-right align-top font-mono font-semibold text-ink tnum">{a.affected}</td>
-                    <td className="px-3 py-3.5 align-top text-muted whitespace-nowrap">{dateTime(a.detected)}</td>
-                    <td className="px-3 py-3.5 align-top"><Badge tone={st.tone}>{st.label}</Badge></td>
-                    <td className="px-5 py-3.5 text-right align-top">
-                      <Button size="sm" variant={a.severity === 'critical' ? 'primary' : 'secondary'} onClick={() => setOpenId(a.id)}>
-                        Review
-                      </Button>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-205 text-left text-[14px]">
+                <thead className="text-[12px] text-muted">
+                  <tr className="border-b border-line">
+                    <th className="py-2.5 pr-3 font-semibold">Region</th>
+                    <th className="py-2.5 pr-3 font-semibold">States</th>
+                    <th className="py-2.5 pr-3 text-right font-semibold">Sanctioned</th>
+                    <th className="py-2.5 pr-3 text-right font-semibold">Enrolled (APAAR)</th>
+                    <th className="py-2.5 pr-3 text-right font-semibold">Difference</th>
+                    <th className="py-2.5 pl-6 font-semibold">
+                      Seats used <span className="font-normal">(tick = 100%)</span>
+                    </th>
                   </tr>
-                )
-              })}
-              {!anomalies.length && (
-                <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-muted">
-                    No anomalies match these filters. Clear the search or pick another severity.
-                  </td>
-                </tr>
+                </thead>
+                <tbody>
+                  {overview.regions.map((r) => {
+                    const diff = r.enrolled - r.sanctioned
+                    const over = diff > 0
+                    const selected = region === r.id
+                    return (
+                      <tr
+                        key={r.id}
+                        onClick={() => setRegion(selected ? null : r.id)}
+                        className={cx('cursor-pointer border-b border-line-soft hover:bg-surface-low', selected && 'bg-primary-tint/50')}
+                      >
+                        <td className="py-3 pr-3 font-semibold" style={over ? urgentEdge : undefined}>
+                          <button type="button" aria-pressed={selected} className="text-left" title="Filter the anomaly register by this region">
+                            {r.name}
+                          </button>
+                        </td>
+                        <td className="py-3 pr-3 text-[13px] text-muted">{r.states}</td>
+                        <td className="py-3 pr-3 text-right">{inr(r.sanctioned)}</td>
+                        <td className="py-3 pr-3 text-right">{inr(r.enrolled)}</td>
+                        <td className={cx('py-3 pr-3 text-right', over ? 'font-semibold text-err' : 'text-muted')}>
+                          {over ? '+' : '−'}
+                          {inr(Math.abs(diff))}
+                        </td>
+                        <td className="py-3 pl-6">
+                          <SeatsBar sanctioned={r.sanctioned} enrolled={r.enrolled} />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-[12.5px] text-muted">Select a region to filter the anomaly register.</p>
+          </section>
+
+          <section className="mt-10">
+            <RegisterHeading
+              en="Anomaly register"
+              right={
+                <>
+                  <TextTabs
+                    label="Severity"
+                    options={[{ value: 'all', label: 'All' }, ...Object.entries(SEVERITY).map(([value, label]) => ({ value, label }))]}
+                    value={sev}
+                    onChange={setSev}
+                  />
+                  <div className="relative">
+                    <Icon name="search" size={15} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-subtle" />
+                    <input className={cx(inputBase, 'h-8 w-56 pl-8 text-[13px]')} placeholder="Institution, code or reference" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search anomalies" />
+                  </div>
+                </>
+              }
+            >
+              {regionName && (
+                <button type="button" onClick={() => setRegion(null)} className="inline-flex items-center gap-1 rounded-sm bg-primary-tint px-2 py-0.5 text-[12.5px] text-primary-3">
+                  {regionName} region <Icon name="x" size={13} />
+                </button>
               )}
-            </tbody>
-          </table>
-        </div>
-        <div className="border-t border-line-soft px-5 py-3 text-[13px] text-muted">
-          Showing {anomalies.length} of {inr(KPIS.openAnomalies)} open anomalies
-        </div>
-      </Panel>
+            </RegisterHeading>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-245 text-left text-[14px]">
+                <thead className="text-[12px] text-muted">
+                  <tr className="border-b border-line">
+                    <th className="py-2.5 pr-3 font-semibold">Reference</th>
+                    <th className="py-2.5 pr-3 font-semibold">Detected</th>
+                    <th className="py-2.5 pr-3 font-semibold">Institution</th>
+                    <th className="py-2.5 pr-3 font-semibold">Finding</th>
+                    <th className="py-2.5 pr-3 text-right font-semibold">Students</th>
+                    <th className="py-2.5 pl-6 font-semibold">Status</th>
+                    <th className="py-2.5" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {shown.map((a) => {
+                    const urgent = a.severity === 'critical' && a.status === 'open'
+                    return (
+                      <tr key={a.id} className="border-b border-line-soft align-top">
+                        <td className="py-3 pr-3 font-mono text-[12px] whitespace-nowrap text-muted" style={urgent ? urgentEdge : undefined}>
+                          {a.ref}
+                        </td>
+                        <td className="py-3 pr-3 text-[13px] whitespace-nowrap text-muted">{dateTime(a.detected)}</td>
+                        <td className="py-3 pr-3">
+                          {a.institution}
+                          <div className="text-[12.5px] text-muted">
+                            {a.city} · {a.code}
+                          </div>
+                        </td>
+                        <td className="max-w-95 py-3 pr-3">
+                          {a.summary}
+                          <div className="text-[12.5px] text-muted">{a.typeLabel}</div>
+                        </td>
+                        <td className={cx('py-3 pr-3 text-right', urgent ? 'font-semibold text-err' : 'text-ink')}>{a.affected}</td>
+                        <td className="py-3 pl-6 whitespace-nowrap">
+                          <span className={cx('mr-2 inline-block size-2', a.status === 'open' && a.severity === 'medium' ? 'bg-warn' : STATUS[a.status].color)} />
+                          {a.status === 'open' ? `${SEVERITY[a.severity]}, open` : STATUS[a.status].label}
+                        </td>
+                        <td className="py-3 pl-3 text-right">
+                          <button type="button" onClick={() => setOpenId(a.id)} className="font-semibold whitespace-nowrap text-primary-2 underline underline-offset-4 hover:text-primary">
+                            Open file
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {!shown.length && (
+                    <tr>
+                      <td colSpan={7} className="py-10 text-center text-muted">
+                        Nothing in the register matches these filters.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-[12.5px] text-muted">
+              Showing {shown.length} of {inr(k.openAnomalies)} open entries. Flags are decision support: action against an
+              institution requires an officer’s review.
+            </p>
+          </section>
+        </>
+      )}
 
       <Drawer
         open={!!open}
-        title={open ? ANOMALY_TYPES[open.type] : ''}
+        title={open ? open.ref : ''}
         onClose={() => setOpenId(null)}
         footer={
           open && (
             <div className="flex w-full flex-wrap gap-2">
-              <Button variant="primary" icon="file" onClick={() => setStatus(open.id, 'notice', `Notice drafted for ${open.institution}`)}>
+              <Button variant="primary" icon="file" onClick={() => act(open.id, 'notice', `Notice recorded on ${open.ref}`)}>
                 Issue notice
               </Button>
-              <Button icon="eye" onClick={() => setStatus(open.id, 'review', 'Marked as under review')}>
+              <Button icon="eye" onClick={() => act(open.id, 'review', 'Marked as under review')}>
                 Mark under review
               </Button>
-              <Button variant="dangerGhost" onClick={() => setStatus(open.id, 'dismissed', 'Dismissed as false positive')}>
+              <Button variant="dangerGhost" onClick={() => act(open.id, 'dismissed', 'Dismissed as a false positive')}>
                 Dismiss
               </Button>
             </div>
@@ -345,44 +390,39 @@ export default function AicteDashboard() {
       >
         {open && (
           <div className="space-y-5">
-            <div className="flex items-center gap-2">
-              <Severity level={open.severity} />
-              <span className="font-mono text-[12.5px] text-muted">{open.id}</span>
-            </div>
             <div>
-              <div className="text-[13px] text-muted">Institution</div>
-              <div className="font-semibold">{open.institution}</div>
-              <div className="font-mono text-[12.5px] text-muted">{open.city} · {open.code} · {open.region} region</div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-md bg-surface-low p-3">
-                <div className="text-[12.5px] text-muted">Students affected</div>
-                <div className="font-mono text-xl font-semibold">{open.affected}</div>
+              <div className="text-[13px] text-muted">
+                {open.typeLabel} · {SEVERITY[open.severity]}
               </div>
-              <div className="rounded-md bg-surface-low p-3">
-                <div className="text-[12.5px] text-muted">Detected</div>
-                <div className="text-[13.5px] font-medium">{dateTime(open.detected)}</div>
-              </div>
+              <p className="mt-1 text-[17px] leading-6 font-semibold">{open.summary}</p>
             </div>
+            <dl className="divide-y divide-line-soft border-y border-line-soft text-[13.5px]">
+              {[
+                ['Institution', `${open.institution}, ${open.city}`],
+                ['Institution code', open.code],
+                ['Region', open.region],
+                ['Students affected', open.affected],
+                ['Detected', dateTime(open.detected)],
+                ['Status', STATUS[open.status].label],
+              ].map(([dt, dd]) => (
+                <div key={dt} className="flex justify-between gap-4 py-2">
+                  <dt className="text-muted">{dt}</dt>
+                  <dd className="text-right font-medium">{dd}</dd>
+                </div>
+              ))}
+            </dl>
             <div>
-              <div className="mb-2 text-[13px] font-medium">Evidence</div>
-              <ul className="space-y-2">
+              <div className="mb-2 text-[13px] font-semibold">Evidence</div>
+              <ol className="list-decimal space-y-2 pl-5 text-[13.5px] leading-5">
                 {open.evidence.map((e) => (
-                  <li key={e} className="flex gap-2 text-[13.5px] leading-5 text-ink">
-                    <Icon name="chevronRight" size={16} className="mt-0.5 text-saffron" />
-                    {e}
-                  </li>
+                  <li key={e}>{e}</li>
                 ))}
-              </ul>
+              </ol>
             </div>
             <label className="block">
-              <span className="mb-1.5 block text-[13px] font-medium">Officer note</span>
-              <textarea className={cx(inputClass, 'h-24 py-2')} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Recorded in the audit trail with your name and time" />
+              <span className="mb-1.5 block text-[13px] font-semibold">Officer’s note</span>
+              <textarea className={cx(inputClass, 'h-24 py-2')} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Recorded on the file with your name and the time" />
             </label>
-            <p className="flex gap-2 rounded-md bg-primary-tint/60 p-3 text-[12.5px] leading-5 text-primary-3">
-              <Icon name="info" size={16} className="mt-0.5" />
-              Flags are decision support. Action against an institution needs an officer’s review.
-            </p>
           </div>
         )}
       </Drawer>

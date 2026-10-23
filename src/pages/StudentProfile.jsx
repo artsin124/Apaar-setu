@@ -88,7 +88,7 @@ export default function StudentProfile() {
     >
       <section className="flex flex-wrap gap-6 rounded-lg border border-line-soft bg-card p-6">
         <Avatar name={STUDENT.name} size={88} className="rounded-lg" />
-        <div className="min-w-[260px] flex-1">
+        <div className="min-w-65 flex-1">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-[30px] leading-9 font-bold text-primary">{STUDENT.name}</h1>
             <Badge tone="ok" dot>
@@ -106,7 +106,7 @@ export default function StudentProfile() {
             {STUDENT.programme} ({STUDENT.duration}) · Batch {STUDENT.batch} · {STUDENT.semester}
           </p>
         </div>
-        <dl className="grid min-w-[240px] grid-cols-2 gap-x-6 gap-y-3 self-start rounded-md bg-surface-low p-4 text-[13px] sm:grid-cols-1">
+        <dl className="grid min-w-60 grid-cols-2 gap-x-6 gap-y-3 self-start rounded-md bg-surface-low p-4 text-[13px] sm:grid-cols-1">
           <div>
             <dt className="text-muted">ABC ID</dt>
             <dd className="font-mono font-semibold">{STUDENT.abcId}</dd>

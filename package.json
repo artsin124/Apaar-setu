@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "APAAR Setu: APAAR ID-based student data and verification platform prototype (SIH26263, team Syntax Slayers)",
+  "description": "APAAR Setu: APAAR ID-based student data and verification platform prototype (SIH26263, team Code Geass)",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

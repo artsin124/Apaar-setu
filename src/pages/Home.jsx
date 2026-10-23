@@ -3,6 +3,7 @@ import { Brand } from '../components/Shell.jsx'
 import { Link } from '../lib/router.jsx'
 import { useAppState } from '../state/AppState.jsx'
 import { useState } from 'react'
+import { GovFooter, GovStrip } from '../components/GovChrome.jsx'
 
 const PORTALS = [
   {
@@ -40,11 +41,12 @@ export default function Home() {
   const [done, setDone] = useState(false)
 
   return (
-    <div className="min-h-screen bg-primary text-white">
-      <div className="mx-auto flex min-h-screen max-w-5xl flex-col px-5 py-8 sm:px-8">
+    <div className="flex min-h-screen flex-col bg-primary text-white">
+      <GovStrip />
+      <main id="main" tabIndex={-1} className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-5 py-8 outline-none sm:px-8">
         <header className="flex items-center justify-between">
-          <Brand subtitle="Prototype · SIH26263" />
-          <span className="text-[13px] text-primary-soft">Team Syntax Slayers</span>
+          <Brand subtitle="Prototype" />
+          <span className="text-[13px] text-primary-soft">Team Code Geass</span>
         </header>
 
         <section className="pt-16 pb-12 sm:pt-24">
@@ -89,7 +91,8 @@ export default function Home() {
             <Icon name="refresh" size={15} /> {done ? 'Demo data reset' : 'Reset demo data'}
           </button>
         </footer>
-      </div>
+      </main>
+      <GovFooter dark />
     </div>
   )
 }
