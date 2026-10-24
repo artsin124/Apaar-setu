@@ -10,6 +10,8 @@ export const HI = {
   'High contrast': 'उच्च कंट्रास्ट',
   'Normal contrast': 'सामान्य कंट्रास्ट',
   'Switch portal': 'पोर्टल बदलें',
+  'Sign out': 'साइन आउट',
+  'Sign in': 'साइन इन',
 
   // AICTE portal
   'National overview': 'राष्ट्रीय अवलोकन',

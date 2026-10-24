@@ -4,13 +4,13 @@ import Icon from '../components/Icon.jsx'
 import { Button, Drawer, Toast, inputBase, inputClass } from '../components/ui.jsx'
 import { ACADEMIC_YEAR, PROGRAMMES } from '../data/mock.js'
 import { getOverview, listAnomalies, runDeduplication, updateAnomaly } from '../api/index.js'
-import { cx, dateTime, inr, pct } from '../lib/format.js'
+import { cx, dateTime, inr } from '../lib/format.js'
 import { downloadText, toCsv } from '../lib/csv.js'
-import { HI } from '../lib/i18n.js'
+import { RegisterHeading, SeatsBar, TextTabs } from '../components/Register.jsx'
 
 const NAV = [
   { label: 'National overview', icon: 'dashboard', to: '/aicte', active: true },
-  { label: 'Institutions & intake', icon: 'building' },
+  { label: 'Institutions & intake', icon: 'building', to: '/aicte/institutions' },
   { label: 'Student register', icon: 'users' },
   { label: 'Anomalies', icon: 'alert', badge: '1,286' },
   { label: 'Verification ledger', icon: 'shieldCheck', to: '/verify' },
@@ -25,66 +25,9 @@ const STATUS = {
 }
 const SEVERITY = { critical: 'Critical', high: 'High', medium: 'Medium' }
 
-// Heading with its Hindi equivalent, as on government registers
-function RegisterHeading({ en, children, right }) {
-  return (
-    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-2 border-b border-ink pb-2">
-      <h2 className="text-[16px] font-bold text-ink">{en}</h2>
-      {HI[en] && (
-        <span lang="hi" className="text-[13.5px] text-primary-3">
-          {HI[en]}
-        </span>
-      )}
-      {children}
-      {right && <div className="ml-auto flex flex-wrap items-center gap-3">{right}</div>}
-    </div>
-  )
-}
-
-// Underlined text tabs instead of pill buttons
-function TextTabs({ label, options, value, onChange }) {
-  return (
-    <div className="flex items-baseline gap-1 text-[13px] text-muted" role="group" aria-label={label}>
-      <span className="mr-1">{label}:</span>
-      {options.map((o, i) => {
-        const v = typeof o === 'string' ? o : o.value
-        const l = typeof o === 'string' ? o : o.label
-        return (
-          <span key={v} className="flex items-baseline gap-1">
-            {i > 0 && <span className="text-subtle">·</span>}
-            <button
-              type="button"
-              aria-pressed={v === value}
-              onClick={() => onChange(v)}
-              className={cx('px-0.5 hover:text-ink', v === value && 'border-b-[1.5px] border-primary-2 font-semibold text-ink')}
-            >
-              {l}
-            </button>
-          </span>
-        )
-      })}
-    </div>
-  )
-}
-
-function SeatsBar({ sanctioned, enrolled }) {
-  // Track runs to 110% so overshoots stay visible; the tick marks 100%.
-  const cap = 1.1
-  const ratio = enrolled / sanctioned
-  const within = (Math.min(ratio, 1) / cap) * 100
-  const over = ratio > 1 ? ((Math.min(ratio, cap) - 1) / cap) * 100 : 0
-  return (
-    <div className="relative h-2.5 w-full max-w-60 bg-surface-mid" role="img" aria-label={`${pct(enrolled, sanctioned)}% of sanctioned seats used`}>
-      <div className="seat-fill absolute inset-y-0 left-0 bg-primary-2" style={{ width: `${within}%` }} />
-      {over > 0 && <div className="absolute inset-y-0 bg-err" style={{ left: `${100 / cap}%`, width: `${over}%` }} />}
-      <div className="absolute -inset-y-1 w-[1.5px] bg-ink" style={{ left: `${100 / cap}%` }} />
-    </div>
-  )
-}
-
 const urgentEdge = { boxShadow: 'inset 3px 0 0 var(--color-err)', paddingLeft: '10px' }
 
-export default function AicteDashboard() {
+export default function AicteDashboard({ account }) {
   const [programme, setProgramme] = useState('All')
   const [overview, setOverview] = useState(null)
   const [anomalies, setAnomalies] = useState([])
@@ -165,7 +108,7 @@ export default function AicteDashboard() {
       subtitle="AICTE oversight"
       context="National academic ledger for AICTE-approved institutions"
       nav={NAV}
-      user={{ name: 'Dr. Alok Singh', role: 'Joint Secretary, Approval Bureau' }}
+      user={{ name: account.name, role: account.title }}
       crumbs={['AICTE HQ, New Delhi', 'National overview']}
     >
       {!overview ? (
@@ -334,6 +277,7 @@ export default function AicteDashboard() {
                           </div>
                         </td>
                         <td className="max-w-95 py-3 pr-3">
+                          {a.live && <span className="mr-1.5 rounded-sm bg-err px-1.5 py-px align-[1px] text-[11px] font-semibold text-white">New</span>}
                           {a.summary}
                           <div className="text-[12.5px] text-muted">{a.typeLabel}</div>
                         </td>

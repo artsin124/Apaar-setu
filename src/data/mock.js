@@ -1,3 +1,5 @@
+import { DEMO_INSTITUTIONS } from './institutions.js'
+
 // Synthetic data for the prototype. Every institution below is fictional:
 // real college names should never appear next to "breach" or "anomaly" flags in a demo.
 
@@ -171,32 +173,17 @@ export const INTAKE_VIOLATORS = [
   { name: 'Mahanadi Institute of Technology', city: 'Bhubaneswar', programme: 'B.Tech IT', sanctioned: 180, uploaded: 199 },
 ]
 
-// The institution whose admin uses the upload screen.
-export const MY_INSTITUTION = {
-  name: 'Konkan Institute of Engineering & Technology',
-  shortName: 'KIET',
-  city: 'Navi Mumbai',
-  code: 'C-49270',
-  aictePid: '1-1049281',
-  officer: 'Dr. Rajeshwar Patil',
-  officerRole: 'Registrar, nodal officer',
-}
-
-export const MY_PROGRAMMES = [
-  { code: 'BTECH-CE', name: 'B.Tech Computer Engineering', sanctioned: 180, supernumerary: 9 },
-  { code: 'BTECH-IT', name: 'B.Tech Information Technology', sanctioned: 120, supernumerary: 6 },
-  { code: 'BTECH-EXTC', name: 'B.Tech Electronics & Telecommunication', sanctioned: 60, supernumerary: 3 },
-  { code: 'MCA', name: 'Master of Computer Applications', sanctioned: 60, supernumerary: 3 },
-]
+// The student used on the student portal and verifier is enrolled here.
+const STUDENT_INSTITUTION = DEMO_INSTITUTIONS[0]
 
 export const STUDENT = {
   name: 'Priya Deshmukh',
   apaarId: '739428105621',
   abcId: 'ABC-489-102-4829',
   enrolmentNo: '2023-KIET-CE-0419',
-  institution: MY_INSTITUTION.name,
-  institutionCity: MY_INSTITUTION.city,
-  aictePid: MY_INSTITUTION.aictePid,
+  institution: STUDENT_INSTITUTION.name,
+  institutionCity: STUDENT_INSTITUTION.city,
+  aictePid: STUDENT_INSTITUTION.aictePid,
   programme: 'B.Tech Computer Engineering',
   duration: '4-year, full-time',
   batch: '2023–2027',

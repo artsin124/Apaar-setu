@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import Icon from './Icon.jsx'
 import { Avatar } from './ui.jsx'
-import { Link } from '../lib/router.jsx'
+import { Link, navigate } from '../lib/router.jsx'
+import { useSession } from '../state/Session.jsx'
 import { cx } from '../lib/format.js'
 import { GovFooter, GovStrip } from './GovChrome.jsx'
 import { usePrefs } from '../state/Prefs.jsx'
@@ -35,6 +36,7 @@ export function Brand({ subtitle, dark = true }) {
 export default function Shell({ subtitle, context, nav, user, crumbs, topExtra, children }) {
   const [open, setOpen] = useState(false)
   const { t } = usePrefs()
+  const { signOut } = useSession()
 
   // Close the mobile menu if the window grows past the breakpoint
   useEffect(() => {
@@ -117,13 +119,17 @@ export default function Shell({ subtitle, context, nav, user, crumbs, topExtra, 
             Menu
           </button>
           <div className="hidden min-w-0 flex-1 overflow-x-auto md:flex">{nav.map((n) => item(n, false))}</div>
-          <Link
-            to="/"
+          <button
+            type="button"
+            onClick={() => {
+              signOut()
+              navigate('/login')
+            }}
             className="ml-auto flex h-12 items-center gap-1.5 px-4 text-[13px] whitespace-nowrap text-white/80 hover:bg-white/10 hover:text-white"
           >
             <Icon name="switch" size={15} />
-            {t('Switch portal')}
-          </Link>
+            {t('Sign out')}
+          </button>
         </div>
         {open && (
           <div id="mobile-menu" className="border-t border-white/10 pb-2 md:hidden">

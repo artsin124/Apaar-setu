@@ -15,25 +15,34 @@ Open the URL Vite prints (usually http://localhost:5173). Use Chrome or Safari; 
 
 To build a static version: `npm run build`, then serve the `dist/` folder.
 
-## The four portals
+## Pages
 
 | Route | Who | What works |
 |---|---|---|
+| `#/login` | Everyone | Demo sign-in: AICTE, 4 colleges, 1 student. Pages check the role and redirect here |
+| `#/aicte/institutions` | AICTE officials | All institutions with intake, submission status and anomalies; detail drawer per institution |
 | `#/aicte` | AICTE officials | Region and programme filters, intake vs. enrolment bars, anomaly table with search and severity filter, review drawer (issue notice / mark under review / dismiss), CSV export, deduplication run |
-| `#/institution` | College admin | CSV upload (drag and drop), 14 configurable validation rules, intake meters, issue table with filters and paging, issue report download, submission with SHA-256 file fingerprint |
+| `#/institution` | College admin (4 demo colleges) | Sees only its own data. CSV upload (drag and drop), 14 configurable validation rules, intake meters, issue table with filters and paging, issue report download, submission with SHA-256 file fingerprint |
 | `#/student` | Student | Signed QR credential, copy code, download QR, issue new QR, grant / revoke access per organisation, access log |
 | `#/verify` | Employer | Paste code, scan with camera, or upload a QR image. Real signature check, consent check per organisation |
 
-## Demo script (3 minutes)
+## Demo script (4 minutes)
 
-1. **Institution** → click *batch with errors*. Point out the B.Tech CE intake meter (186 of 180), an invalid APAAR ID, and *Already enrolled at another institution*. Submit is blocked.
-2. Click *Start over* → *clean batch* → **Submit to AICTE**. Show the acknowledgement and file fingerprint.
-3. **AICTE** → read the headline, click the **Western** row to filter the anomaly register, then **Open file** on the critical duplicate → **Issue notice**.
-4. **Student** → show the QR, then click **Preview as employer** → green *Verified*.
-5. On the verifier, click **Altered copy** → red *Record has been altered*.
-6. Switch *Verifying as* to **Wipro** and click **Genuine credential** → *Genuine, but not shared with you*. Back on the student page, the access log shows every attempt, including the blocked ones.
+Click **Reset demo data** on the home page before each run.
 
-Use **Reset demo data** on the home page between rehearsals.
+1. **Sign in** as *Dr. Rajeshwar Patil* (Konkan Institute, KIET). Load the *batch with errors* demo file: intake over the limit, invalid APAAR IDs, students enrolled elsewhere. Submit is blocked.
+2. **Start over** → *clean batch* → **Submit to AICTE**. Show the acknowledgement and file fingerprint.
+3. **Sign out**, sign in as *Prof. Meera Kulkarni* (Sahyadri College). Load the *clean batch*: 3 students are flagged *Already enrolled at another institution*. Point out that Sahyadri is **not told which college**, only that the student is enrolled elsewhere.
+4. **Sign out**, sign in as *Dr. Alok Singh* (AICTE). The anomaly register has a **New** critical entry naming both colleges. Open **Institutions & intake**: KIET now shows as submitted, Sahyadri as pending with 1 open anomaly.
+5. **Sign out**, sign in as *Priya Deshmukh*. Show the QR, then **Preview as employer** → *Verified*. Click **Altered copy** → *Record has been altered*.
+6. Switch *Verifying as* to **Wipro** and click **Genuine credential** → *Genuine, but not shared with you*.
+
+The same flow works the other way round, and for Godavari College of Management Studies, which shares 2 MCA applicants with KIET.
+
+### Accounts and data
+
+- Sign-in is per browser tab, so you can keep two colleges open side by side in two tabs.
+- Submissions are shared between all accounts through the browser's localStorage, standing in for AICTE's central database.
 
 ## For the backend team: `src/api/index.js`
 
@@ -45,9 +54,12 @@ Every screen gets and changes data only through the async functions in `src/api/
 | `listAnomalies()` | `GET /aicte/anomalies` |
 | `updateAnomaly(id, { status, note })` | `PATCH /aicte/anomalies/:id` |
 | `runDeduplication()` | `POST /aicte/deduplication` |
-| `getInstitutionContext()` | `GET /institutions/me` |
-| `validateBatch(rows)` | `POST /institutions/me/batches/validate` |
-| `submitBatch(csv, students)` | `POST /institutions/me/batches` |
+| `listDemoAccounts()`, `signIn(id)` | `POST /auth/session` (replace with real sign-in) |
+| `listInstitutions()` | `GET /aicte/institutions` |
+| `getInstitution(code)` | `GET /aicte/institutions/:code` |
+| `getInstitutionContext(code)` | `GET /institutions/me` |
+| `validateBatch(code, rows)` | `POST /institutions/me/batches/validate` |
+| `submitBatch(code, csv, rows)` | `POST /institutions/me/batches` |
 | `issueCredential(student)` | `POST /students/me/credentials` |
 | `verifyCredential(token)` | `POST /credentials/verify` |
 

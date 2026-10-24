@@ -1,10 +1,11 @@
-// Mock APAAR registry + synthetic student roster.
+// Mock APAAR registry + synthetic student rosters for the demo colleges.
 //
 // The real APAAR / ABC registry API isn't publicly accessible, so the app talks
 // to it only through `apaarRegistry` below. In production, swap `MockApaarRegistry`
-// for an HTTP client with the same two methods; nothing else in the app changes.
+// for an HTTP client with the same methods; nothing else in the app changes.
 
-import { MY_INSTITUTION, MY_PROGRAMMES } from './mock.js'
+import { DEMO_INSTITUTIONS } from './institutions.js'
+import { submittedAt } from './store.js'
 
 function mulberry32(seed) {
   let a = seed >>> 0
@@ -21,9 +22,8 @@ const FIRST_F = ['Priya', 'Ananya', 'Sneha', 'Aditi', 'Pooja', 'Riya', 'Kavya', 
 const FIRST_M = ['Rahul', 'Aakash', 'Rohan', 'Vikramaditya', 'Arjun', 'Siddharth', 'Omkar', 'Pranav', 'Yash', 'Aditya', 'Kunal', 'Harsh', 'Tejas', 'Nikhil', 'Sahil', 'Atharva', 'Varun', 'Irfan', 'Manav', 'Karan']
 const LAST = ['Deshmukh', 'Kulkarni', 'Verma', 'Iyer', 'Shinde', 'Mukherjee', 'Joshi', 'Patil', 'Pawar', 'Naik', 'Gupta', 'Sharma', 'Reddy', 'Nair', 'Jadhav', 'More', 'Bhosale', 'Khan', 'Fernandes', 'Chavan', 'Sawant', 'Gaikwad', 'Mehta', 'Rao']
 
-function pad(n) {
-  return String(n).padStart(2, '0')
-}
+const pad = (n) => String(n).padStart(2, '0')
+const isPg = (code) => code === 'MCA' || code === 'MBA'
 
 function makeId(rand) {
   let s = String(1 + Math.floor(rand() * 9))
@@ -35,49 +35,25 @@ function makePerson(rand, programmeCode) {
   const female = rand() < 0.45
   const first = (female ? FIRST_F : FIRST_M)[Math.floor(rand() * 20)]
   const last = LAST[Math.floor(rand() * LAST.length)]
-  const pg = programmeCode === 'MCA'
-  const year = pg ? 2003 + Math.floor(rand() * 2) : 2007 + Math.floor(rand() * 2)
+  const year = isPg(programmeCode) ? 2003 + Math.floor(rand() * 2) : 2007 + Math.floor(rand() * 2)
   const dob = `${year}-${pad(1 + Math.floor(rand() * 12))}-${pad(1 + Math.floor(rand() * 28))}`
   return { name: `${first} ${last}`, gender: female ? 'F' : 'M', dob }
 }
 
-// Students admitted to MY_INSTITUTION this year (clean roster).
-const ROSTER_PLAN = [
-  { code: 'BTECH-CE', regular: 174, supernumerary: 3 },
-  { code: 'BTECH-IT', regular: 116, supernumerary: 2 },
-  { code: 'BTECH-EXTC', regular: 54, supernumerary: 0 },
-  { code: 'MCA', regular: 58, supernumerary: 1 },
-]
-
-function buildRoster() {
-  const rand = mulberry32(26263)
-  const used = new Set()
-  const rows = []
-  for (const plan of ROSTER_PLAN) {
-    const total = plan.regular + plan.supernumerary
-    for (let i = 0; i < total; i++) {
-      let id = makeId(rand)
-      while (used.has(id)) id = makeId(rand)
-      used.add(id)
-      const p = makePerson(rand, plan.code)
-      const r = rand()
-      const quota = r < 0.04 ? 'NRI' : r < 0.06 ? 'Foreign National' : r < 0.07 ? 'OCI' : 'Merit'
-      rows.push({
-        apaar_id: id,
-        student_name: p.name,
-        date_of_birth: p.dob,
-        gender: p.gender,
-        programme_code: plan.code,
-        admission_year: '2026',
-        seat_type: i < plan.regular ? 'Regular' : 'Supernumerary',
-        quota,
-        nationality: quota === 'Foreign National' ? ['Nepal', 'Bangladesh', 'Sri Lanka'][Math.floor(rand() * 3)] : 'Indian',
-        oci_status: quota === 'OCI' ? 'Y' : 'N',
-        nri_document_ref: quota === 'NRI' ? `NRI-DOC-${Math.floor(10000 + rand() * 89999)}` : '',
-      })
-    }
+function makeRow(rand, id, person, programmeCode, seatType, quota = 'Merit') {
+  return {
+    apaar_id: id,
+    student_name: person.name,
+    date_of_birth: person.dob,
+    gender: person.gender,
+    programme_code: programmeCode,
+    admission_year: '2026',
+    seat_type: seatType,
+    quota,
+    nationality: quota === 'Foreign National' ? ['Nepal', 'Bangladesh', 'Sri Lanka'][Math.floor(rand() * 3)] : 'Indian',
+    oci_status: quota === 'OCI' ? 'Y' : 'N',
+    nri_document_ref: quota === 'NRI' ? `NRI-DOC-${Math.floor(10000 + rand() * 89999)}` : '',
   }
-  return rows
 }
 
 export const CSV_HEADERS = [
@@ -94,35 +70,83 @@ export const CSV_HEADERS = [
   'nri_document_ref',
 ]
 
-const ROSTER = buildRoster()
+const REGISTRY = new Map()
+const USED = new Set()
 
-// Students already actively enrolled at other institutions this year.
-const ELSEWHERE = [
-  { apaar_id: '482190123847', name: 'Rahul Kulkarni', dob: '2007-05-14', institution: 'Sardar Patel College of Engineering, Mumbai' },
-  { apaar_id: '561203948817', name: 'Omkar Jadhav', dob: '2008-01-22', institution: 'Deccan Valley College of Engineering, Pune' },
-  { apaar_id: '617730284451', name: 'Fatima Khan', dob: '2007-11-03', institution: 'Narmada Institute of Technology, Indore' },
+function freshId(rand) {
+  let id = makeId(rand)
+  while (USED.has(id)) id = makeId(rand)
+  USED.add(id)
+  return id
+}
+
+// Students who applied to two demo colleges and appear in both colleges' lists.
+// Whichever college submits first "wins"; the other one gets the duplicate error.
+const OVERLAPS = [
+  { from: 'C-49270', to: 'C-51882', programme: 'BTECH-CE', toProgramme: 'BTECH-CE', count: 3 },
+  { from: 'C-49270', to: 'C-38815', programme: 'MCA', toProgramme: 'MCA', count: 2 },
 ]
 
-const REGISTRY = new Map()
-for (const r of ROSTER) {
-  REGISTRY.set(r.apaar_id, { name: r.student_name, dob: r.date_of_birth, activeAt: null })
+function buildRosters() {
+  const rosters = {}
+  for (const inst of DEMO_INSTITUTIONS) {
+    const rand = mulberry32(inst.seed)
+    const rows = []
+    for (const p of inst.programmes) {
+      const shared = OVERLAPS.filter((o) => o.to === inst.code && o.toProgramme === p.code).reduce((n, o) => n + o.count, 0)
+      const total = p.admitted - shared + p.superAdmitted
+      for (let i = 0; i < total; i++) {
+        const r = rand()
+        const quota = r < 0.04 ? 'NRI' : r < 0.06 ? 'Foreign National' : r < 0.07 ? 'OCI' : 'Merit'
+        rows.push(makeRow(rand, freshId(rand), makePerson(rand, p.code), p.code, i < p.admitted - shared ? 'Regular' : 'Supernumerary', quota))
+      }
+    }
+    rosters[inst.code] = rows
+  }
+  // Copy shared applicants into the second college's list (as regular Merit seats)
+  for (const o of OVERLAPS) {
+    const src = rosters[o.from].filter((r) => r.programme_code === o.programme && r.seat_type === 'Regular' && r.quota === 'Merit')
+    const picks = src.slice(-o.count).map((r) => ({ ...r, programme_code: o.toProgramme }))
+    const dest = rosters[o.to]
+    const at = dest.findIndex((r) => r.programme_code === o.toProgramme && r.seat_type === 'Supernumerary')
+    dest.splice(at < 0 ? dest.length : at, 0, ...picks)
+  }
+  for (const rows of Object.values(rosters)) {
+    for (const r of rows) REGISTRY.set(r.apaar_id, { name: r.student_name, dob: r.date_of_birth, activeAt: null })
+  }
+  return rosters
 }
-for (const e of ELSEWHERE) {
-  REGISTRY.set(e.apaar_id, { name: e.name, dob: e.dob, activeAt: e.institution })
-}
+
+const ROSTERS = buildRosters()
+
+// Students already actively enrolled at institutions outside the demo.
+const ELSEWHERE = [
+  { apaar_id: '482190123847', name: 'Rahul Kulkarni', dob: '2007-05-14', gender: 'M' },
+  { apaar_id: '561203948817', name: 'Omkar Jadhav', dob: '2008-01-22', gender: 'M' },
+  { apaar_id: '617730284451', name: 'Fatima Khan', dob: '2007-11-03', gender: 'F' },
+]
+for (const e of ELSEWHERE) REGISTRY.set(e.apaar_id, { name: e.name, dob: e.dob, activeAt: 'external' })
+
 // The demo student used on the profile and verifier screens.
-REGISTRY.set('739428105621', { name: 'Priya Deshmukh', dob: '2005-03-18', activeAt: `${MY_INSTITUTION.name}, ${MY_INSTITUTION.city}` })
+REGISTRY.set('739428105621', { name: 'Priya Deshmukh', dob: '2005-03-18', activeAt: 'C-49270' })
 
 class MockApaarRegistry {
   // Returns null when the APAAR ID doesn't exist.
   lookup(apaarId) {
     return REGISTRY.get(apaarId) ?? null
   }
-  // Institution where this APAAR ID is currently active, excluding `selfName`.
-  activeElsewhere(apaarId, selfName) {
+
+  // Is this student actively enrolled at another institution this year?
+  // Returns { institutionCode } or null. The code is for AICTE's records only and
+  // is never shown to the uploading college.
+  activeElsewhere(apaarId, myCode) {
     const rec = REGISTRY.get(apaarId)
-    if (!rec?.activeAt || rec.activeAt.startsWith(selfName)) return null
-    return rec.activeAt
+    if (rec?.activeAt && rec.activeAt !== myCode) {
+      return { institutionCode: rec.activeAt === 'external' ? null : rec.activeAt }
+    }
+    const code = submittedAt(apaarId)
+    if (code && code !== myCode) return { institutionCode: code }
+    return null
   }
 }
 
@@ -130,98 +154,81 @@ export const apaarRegistry = new MockApaarRegistry()
 
 // ---------- Sample upload files ----------
 
-export function sampleRowsClean() {
-  return ROSTER.map((r) => ({ ...r }))
+export function sampleRowsClean(code) {
+  return (ROSTERS[code] ?? []).map((r) => ({ ...r }))
 }
 
-export function sampleRowsWithIssues() {
-  const rows = sampleRowsClean()
-  const rand = mulberry32(42)
-  const ceIdx = rows.map((r, i) => (r.programme_code === 'BTECH-CE' ? i : -1)).filter((i) => i >= 0)
+export function sampleRowsWithIssues(code) {
+  const inst = DEMO_INSTITUTIONS.find((i) => i.code === code)
+  const rows = sampleRowsClean(code)
+  const rand = mulberry32(inst.seed + 7)
+  const [main, second, ...rest] = inst.programmes
+  const last = rest.at(-1) ?? second
+  const of = (p) => rows.filter((r) => r.programme_code === p.code)
+  const mainRows = of(main)
+  const at = (f) => mainRows[Math.floor(mainRows.length * f)]
 
   // 1. Invalid APAAR formats
-  rows[ceIdx[41]].apaar_id = '8492102948' // 10 digits
-  rows[ceIdx[77]].apaar_id = '73049281055213' // 14 digits
-  rows[ceIdx[120]].apaar_id = '9102A8417729' // contains a letter
+  at(0.24).apaar_id = '8492102948' // 10 digits
+  at(0.44).apaar_id = '73049281055213' // 14 digits
+  at(0.69).apaar_id = '9102A8417729' // contains a letter
 
-  // 2. Missing required data
-  rows[ceIdx[33]].student_name = ''
-  rows[ceIdx[150]].date_of_birth = '31/02/2008'
+  // 2. Missing or malformed data
+  at(0.19).student_name = ''
+  at(0.86).date_of_birth = '31/02/2008'
 
   // 3. Implausible age
-  rows[ceIdx[60]].date_of_birth = '2015-08-14'
+  at(0.34).date_of_birth = '2015-08-14'
 
   // 4. NRI quota without document
-  const nriA = rows.find((r) => r.programme_code === 'BTECH-EXTC')
-  nriA.quota = 'NRI'
-  nriA.nri_document_ref = ''
-  const nriB = rows.find((r) => r.programme_code === 'BTECH-IT' && r.quota === 'Merit')
-  nriB.quota = 'NRI'
-  nriB.nri_document_ref = ''
+  for (const p of [second, last]) {
+    const r = of(p).find((x) => x.quota === 'Merit')
+    if (r) {
+      r.quota = 'NRI'
+      r.nri_document_ref = ''
+    }
+  }
 
   // 5. Foreign national marked as Indian (warning)
-  const fn = rows.find((r) => r.programme_code === 'MCA' && r.quota === 'Merit')
-  fn.quota = 'Foreign National'
-  fn.nationality = 'Indian'
+  const fn = of(last).filter((r) => r.quota === 'Merit')[3]
+  if (fn) {
+    fn.quota = 'Foreign National'
+    fn.nationality = 'Indian'
+  }
 
   // 6. Name / DOB differ from registry (warnings)
-  rows[ceIdx[12]].student_name = rows[ceIdx[12]].student_name.replace(/a/, 'aa')
-  const it = rows.filter((r) => r.programme_code === 'BTECH-IT')
-  it[20].date_of_birth = '2006-12-30'
-  it[45].student_name = it[45].student_name.split(' ').reverse().join(' ')
+  const nm = at(0.07)
+  nm.student_name = nm.student_name.replace(/a/, 'aa')
+  const sec = of(second)
+  sec[Math.floor(sec.length * 0.3)].date_of_birth = isPg(second.code) ? '2002-12-30' : '2006-12-30'
+  const swap = sec[Math.floor(sec.length * 0.5)]
+  swap.student_name = swap.student_name.split(' ').reverse().join(' ')
 
-  // 7. Unknown programme code
-  it[70].programme_code = 'BTECH-AIML'
+  // 7. Programme not approved for this institution
+  sec[Math.floor(sec.length * 0.7)].programme_code = 'BTECH-AIML'
 
   const extra = []
   // 8. Duplicates within the file
-  extra.push({ ...rows[ceIdx[63]] })
-  extra.push({ ...it[10] })
+  extra.push({ ...at(0.36) })
+  extra.push({ ...sec[Math.floor(sec.length * 0.1)] })
 
-  // 9. Already enrolled elsewhere (cross-institution duplicates)
+  // 9. Already enrolled at an institution outside the demo
   for (const e of ELSEWHERE) {
-    extra.push({
-      apaar_id: e.apaar_id,
-      student_name: e.name,
-      date_of_birth: e.dob,
-      gender: e.name.startsWith('Fatima') ? 'F' : 'M',
-      programme_code: 'BTECH-CE',
-      admission_year: '2026',
-      seat_type: 'Regular',
-      quota: 'Merit',
-      nationality: 'Indian',
-      oci_status: 'N',
-      nri_document_ref: '',
-    })
+    extra.push(makeRow(rand, e.apaar_id, e, main.code, 'Regular'))
   }
 
   // 10. IDs that don't exist in the registry
-  extra.push({ ...rows[ceIdx[5]], apaar_id: '999912345678', student_name: 'Harsh Mehta' })
-  extra.push({ ...rows[ceIdx[6]], apaar_id: '999987654321', student_name: 'Tanvi Rao' })
+  extra.push({ ...at(0.03), apaar_id: '999912345678', student_name: 'Harsh Mehta' })
+  extra.push({ ...at(0.04), apaar_id: '999987654321', student_name: 'Tanvi Rao' })
 
-  // 11. More regular CE admissions than sanctioned (174 clean + 12 extra = 186 of 180)
-  for (let i = 0; i < 12; i++) {
-    let id = makeId(rand)
-    while (REGISTRY.has(id)) id = makeId(rand)
-    // Register the ID so these rows only trip the intake rule
-    const p = makePerson(rand, 'BTECH-CE')
+  // 11. More regular admissions than sanctioned in the main programme
+  const over = main.sanctioned - main.admitted + 6
+  for (let i = 0; i < over; i++) {
+    const id = freshId(rand)
+    const p = makePerson(rand, main.code)
     REGISTRY.set(id, { name: p.name, dob: p.dob, activeAt: null })
-    extra.push({
-      apaar_id: id,
-      student_name: p.name,
-      date_of_birth: p.dob,
-      gender: p.gender,
-      programme_code: 'BTECH-CE',
-      admission_year: '2026',
-      seat_type: 'Regular',
-      quota: 'Merit',
-      nationality: 'Indian',
-      oci_status: 'N',
-      nri_document_ref: '',
-    })
+    extra.push(makeRow(rand, id, p, main.code, 'Regular'))
   }
 
   return [...rows, ...extra]
 }
-
-export { MY_PROGRAMMES }

@@ -18,7 +18,7 @@ const PORTALS = [
     icon: 'upload',
     who: 'College admin',
     title: 'Student data upload',
-    does: 'Upload a CSV, see every rule violation with a fix, and submit only when the batch is clean.',
+    does: 'Four demo colleges. Upload a CSV, fix every rule violation, and submit. Students already enrolled at another college are caught.',
   },
   {
     to: '/student',
@@ -46,7 +46,12 @@ export default function Home() {
       <main id="main" tabIndex={-1} className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-5 py-8 outline-none sm:px-8">
         <header className="flex items-center justify-between">
           <Brand subtitle="Prototype" />
-          <span className="text-[13px] text-primary-soft">Team Code Geass</span>
+          <div className="flex items-center gap-4">
+            <span className="hidden text-[13px] text-primary-soft sm:inline">Team Code Geass</span>
+            <Link to="/login" className="inline-flex h-9 items-center gap-1.5 rounded-md bg-saffron-2 px-3.5 text-[13.5px] font-semibold text-primary hover:brightness-105">
+              Sign in <Icon name="arrowRight" size={15} />
+            </Link>
+          </div>
         </header>
 
         <section className="pt-16 pb-12 sm:pt-24">

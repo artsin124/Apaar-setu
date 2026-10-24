@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import Shell from '../components/Shell.jsx'
 import Icon from '../components/Icon.jsx'
 import { Badge, Button, Meter, Panel, Segmented, Severity, inputBase, inputClass } from '../components/ui.jsx'
-import { ACADEMIC_YEAR, MY_INSTITUTION, MY_PROGRAMMES } from '../data/mock.js'
+import { ACADEMIC_YEAR } from '../data/mock.js'
 import { CSV_HEADERS, sampleRowsClean, sampleRowsWithIssues } from '../data/registry.js'
 import { downloadText, parseCsv, toCsv } from '../lib/csv.js'
-import { submitBatch, validateBatch } from '../api/index.js'
+import { getInstitutionContext, submitBatch, validateBatch } from '../api/index.js'
 import { usePrefs } from '../state/Prefs.jsx'
 import { apaar as fmtApaar, cx, dateTime, inr, pct } from '../lib/format.js'
 
@@ -17,7 +17,6 @@ const NAV = [
   { label: 'Reports & audit log', icon: 'ledger' },
 ]
 
-const PROG_NAME = Object.fromEntries(MY_PROGRAMMES.map((p) => [p.code, p.name]))
 const PAGE = 10
 
 function Steps({ stage, hasErrors }) {
@@ -49,7 +48,9 @@ function Steps({ stage, hasErrors }) {
   )
 }
 
-export default function InstitutionUpload() {
+export default function InstitutionUpload({ account }) {
+  const code = account.institutionCode
+  const [ctx, setCtx] = useState(null)
   const [stage, setStage] = useState('empty')
   const [fileName, setFileName] = useState('')
   const [fileText, setFileText] = useState('')
@@ -68,6 +69,10 @@ export default function InstitutionUpload() {
   const { t } = usePrefs()
 
   useEffect(() => {
+    getInstitutionContext(code).then(setCtx)
+  }, [code])
+
+  useEffect(() => {
     if (!rows.length) {
       setResult(null)
       return
@@ -75,7 +80,7 @@ export default function InstitutionUpload() {
     let live = true
     setResult(null)
     setChecking(true)
-    validateBatch(rows).then((r) => {
+    validateBatch(code, rows).then((r) => {
       if (live) {
         setResult(r)
         setChecking(false)
@@ -84,7 +89,7 @@ export default function InstitutionUpload() {
     return () => {
       live = false
     }
-  }, [rows])
+  }, [code, rows])
 
   const loadText = (text, name) => {
     const { headers, records } = parseCsv(text)
@@ -110,8 +115,9 @@ export default function InstitutionUpload() {
   }
 
   const loadSample = (withIssues) => {
-    const data = withIssues ? sampleRowsWithIssues() : sampleRowsClean()
-    loadText(toCsv(CSV_HEADERS, data), withIssues ? 'kiet_admissions_2026_v2.csv' : 'kiet_admissions_2026_v3.csv')
+    const data = withIssues ? sampleRowsWithIssues(code) : sampleRowsClean(code)
+    const slug = ctx.institution.slug
+    loadText(toCsv(CSV_HEADERS, data), withIssues ? `${slug}_admissions_2026_v2.csv` : `${slug}_admissions_2026_v3.csv`)
   }
 
   const onFile = (file) => {
@@ -156,19 +162,26 @@ export default function InstitutionUpload() {
   }
 
   const submit = async () => {
-    const r = await submitBatch(fileText, result.total)
+    const r = await submitBatch(code, fileText, rows)
     setReceipt({ id: r.acknowledgement, hash: r.sha256, at: r.submittedAt, students: r.students })
     setStage('submitted')
+    getInstitutionContext(code).then(setCtx)
     window.scrollTo(0, 0)
   }
+
+  if (!ctx) {
+    return <div className="py-24 text-center text-muted">Loading your institution…</div>
+  }
+  const inst = ctx.institution
+  const PROG_NAME = Object.fromEntries(ctx.programmes.map((p) => [p.code, p.name]))
 
   return (
     <Shell
       subtitle="Institution portal"
-      context={`${MY_INSTITUTION.name}, ${MY_INSTITUTION.city} · ${MY_INSTITUTION.code}`}
+      context={`${inst.name}, ${inst.city} · ${inst.code}`}
       nav={NAV}
-      user={{ name: MY_INSTITUTION.officer, role: MY_INSTITUTION.officerRole }}
-      crumbs={[MY_INSTITUTION.shortName, 'Student data upload', `${ACADEMIC_YEAR} admissions`]}
+      user={{ name: account.name, role: account.title }}
+      crumbs={[inst.shortName, 'Student data upload', `${ACADEMIC_YEAR} admissions`]}
       topExtra={<Badge tone="info">{ACADEMIC_YEAR}</Badge>}
     >
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -179,7 +192,7 @@ export default function InstitutionUpload() {
             approved intake before it reaches AICTE.
           </p>
         </div>
-        <Button icon="download" onClick={() => downloadText('apaar_setu_template.csv', toCsv(CSV_HEADERS, sampleRowsClean().slice(0, 3)))}>
+        <Button icon="download" onClick={() => downloadText('apaar_setu_template.csv', toCsv(CSV_HEADERS, sampleRowsClean(code).slice(0, 3)))}>
           Download CSV template
         </Button>
       </div>
@@ -193,6 +206,17 @@ export default function InstitutionUpload() {
       {error && (
         <div role="alert" className="mt-4 flex gap-2 rounded-md border border-err/30 bg-err-bg/50 px-4 py-3 text-[13.5px] text-err">
           <Icon name="alert" size={17} className="mt-0.5" /> {error}
+        </div>
+      )}
+
+      {stage === 'empty' && ctx.submission && (
+        <div className="mt-6 flex flex-wrap items-center gap-3 rounded-md border border-ok/30 bg-ok-bg/40 px-4 py-3 text-[13.5px]">
+          <Icon name="checkCircle" size={18} className="text-ok" />
+          <span className="flex-1">
+            <span className="font-semibold text-ink">Already submitted:</span> {inr(ctx.submission.students)} students on{' '}
+            {dateTime(ctx.submission.at)}, acknowledgement <span className="font-mono">{ctx.submission.ack}</span>. Uploading
+            again replaces that submission.
+          </span>
         </div>
       )}
 
@@ -288,7 +312,7 @@ export default function InstitutionUpload() {
             <div className="rounded-lg border border-line-soft bg-card p-5">
               <div className="text-[13px] text-muted">Rows checked</div>
               <div className="mt-2 font-mono text-[30px] leading-9 font-semibold text-primary tnum">{inr(result.total)}</div>
-              <div className="text-[13px] text-muted">across {MY_PROGRAMMES.length} programmes</div>
+              <div className="text-[13px] text-muted">across {ctx.programmes.length} programmes</div>
             </div>
             <div className="rounded-lg border border-line-soft bg-card p-5">
               <div className="text-[13px] text-muted">Ready for AICTE</div>
@@ -359,7 +383,7 @@ export default function InstitutionUpload() {
                 />
                 <select className={cx(inputBase, 'h-8 text-[13px]')} value={prog} onChange={(e) => { setProg(e.target.value); setPage(0) }} aria-label="Programme">
                   <option value="all">All programmes</option>
-                  {MY_PROGRAMMES.map((p) => (
+                  {ctx.programmes.map((p) => (
                     <option key={p.code} value={p.code}>{p.name}</option>
                   ))}
                 </select>

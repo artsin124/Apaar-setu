@@ -4,13 +4,16 @@ import './index.css'
 import App from './App.jsx'
 import { AppStateProvider } from './state/AppState.jsx'
 import { PrefsProvider } from './state/Prefs.jsx'
+import { SessionProvider } from './state/Session.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <PrefsProvider>
-      <AppStateProvider>
-        <App />
-      </AppStateProvider>
+      <SessionProvider>
+        <AppStateProvider>
+          <App />
+        </AppStateProvider>
+      </SessionProvider>
     </PrefsProvider>
   </StrictMode>,
 )

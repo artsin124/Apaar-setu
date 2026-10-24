@@ -9,7 +9,7 @@ export const RULES = {
   APAAR_FORMAT: { severity: 'error', title: 'APAAR ID must be exactly 12 digits', fix: 'Copy the ID from the student’s DigiLocker APAAR card.' },
   APAAR_NOT_FOUND: { severity: 'error', title: 'APAAR ID not found in national registry', fix: 'Ask the student to generate or confirm their APAAR ID through DigiLocker.' },
   DUPLICATE_IN_FILE: { severity: 'error', title: 'Duplicate row in this file', fix: 'Remove the repeated row.' },
-  ACTIVE_ELSEWHERE: { severity: 'error', title: 'Already enrolled at another institution', fix: 'Collect a migration / transfer certificate before admitting.' },
+  ACTIVE_ELSEWHERE: { severity: 'error', title: 'Already enrolled at another institution', fix: 'Ask the student for a migration certificate, or for proof they’ve withdrawn from the other institution.' },
   PROGRAMME_UNKNOWN: { severity: 'error', title: 'Programme not approved for this institution', fix: 'Use one of the approved programme codes.' },
   DATE_FORMAT: { severity: 'error', title: 'Date must be YYYY-MM-DD', fix: 'Re-enter the date of birth from the school-leaving certificate.' },
   AGE_RANGE: { severity: 'error', title: 'Age is implausible for this programme', fix: 'Check the date of birth against the SSC certificate.' },
@@ -39,8 +39,12 @@ function validIsoDate(s) {
 
 const norm = (s = '') => s.toLowerCase().replace(/\s+/g, ' ').trim()
 
-export function validateRows(rows, { institutionName, programmes }) {
+// `conflicts` in the result is for the server only (to alert AICTE). The API layer
+// strips it before the result reaches the college, which never learns where else
+// a student is enrolled.
+export function validateRows(rows, { institution, programmes }) {
   const issues = []
+  const conflicts = []
   const progByCode = Object.fromEntries(programmes.map((p) => [p.code, p]))
   const seen = new Map()
   const counts = Object.fromEntries(programmes.map((p) => [p.code, { regular: 0, supernumerary: 0 }]))
@@ -80,8 +84,11 @@ export function validateRows(rows, { institutionName, programmes }) {
           add(row, 'APAAR_NOT_FOUND', 'apaar_id', 'The registry returned no record for this ID.')
         } else {
           idUsable = true
-          const elsewhere = apaarRegistry.activeElsewhere(id, institutionName)
-          if (elsewhere) add(row, 'ACTIVE_ELSEWHERE', 'apaar_id', `Active enrolment at ${elsewhere}.`)
+          const elsewhere = apaarRegistry.activeElsewhere(id, institution.code)
+          if (elsewhere) {
+            add(row, 'ACTIVE_ELSEWHERE', 'apaar_id', 'This student is actively enrolled at another AICTE-approved institution this year.')
+            conflicts.push({ apaar: id, name: rec.name, programme: row.programme_code, withCode: elsewhere.institutionCode })
+          }
           if (row.student_name && norm(rec.name) !== norm(row.student_name)) {
             add(row, 'NAME_MISMATCH', 'student_name', `APAAR record says “${rec.name}”.`)
           }
@@ -97,7 +104,7 @@ export function validateRows(rows, { institutionName, programmes }) {
         add(row, 'DATE_FORMAT', 'date_of_birth', `“${row.date_of_birth}” is not a valid date.`)
       } else {
         const age = ageOn(row.date_of_birth)
-        const pg = row.programme_code === 'MCA'
+        const pg = row.programme_code === 'MCA' || row.programme_code === 'MBA'
         const [min, max] = pg ? [20, 45] : [16, 30]
         if (age < min || age > max) add(row, 'AGE_RANGE', 'date_of_birth', `Student would be ${age} years old at admission.`)
       }
@@ -137,6 +144,7 @@ export function validateRows(rows, { institutionName, programmes }) {
 
   return {
     issues,
+    conflicts,
     total: rows.length,
     validRows: rows.length - errorRows.size,
     errorCount: issues.filter((i) => i.severity === 'error').length,
