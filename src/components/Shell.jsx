@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Icon from './Icon.jsx'
 import { Avatar } from './ui.jsx'
 import { Link } from '../lib/router.jsx'
@@ -30,86 +30,122 @@ export function Brand({ subtitle, dark = true }) {
   )
 }
 
+// Layout used by government portals (india.gov.in, mha.gov.in, uidai.gov.in):
+// utility strip → masthead with identity → horizontal menu bar → content → footer.
 export default function Shell({ subtitle, context, nav, user, crumbs, topExtra, children }) {
   const [open, setOpen] = useState(false)
   const { t } = usePrefs()
 
-  const sidebar = (
-    <div className="flex h-full flex-col bg-primary-2 text-white">
-      <div className="border-b border-white/10 px-5 pt-5 pb-4">
-        <Brand subtitle={subtitle} />
-        {context && <p className="mt-3 text-[12px] leading-4 text-primary-soft">{context}</p>}
-      </div>
-      <nav className="flex-1 space-y-0.5 px-3 py-4" aria-label="Main">
-        {nav.map((item) => (
-          <a
-            key={item.label}
-            href={item.to ? `#${item.to}` : undefined}
-            aria-current={item.active ? 'page' : undefined}
-            aria-disabled={!item.to || undefined}
-            onClick={() => setOpen(false)}
-            className={cx(
-              'flex items-center gap-3 rounded-md px-3 py-2.5 text-[14px] transition-colors',
-              item.active ? 'bg-white/12 font-semibold text-white' : 'text-white/75',
-              item.to ? 'hover:bg-white/8 hover:text-white' : 'cursor-default opacity-60',
-            )}
-          >
-            <Icon name={item.icon} size={18} />
-            <span className="flex-1">{t(item.label)}</span>
-            {item.badge && <span className="rounded-sm bg-err px-1.5 py-0.5 font-mono text-[11px] font-semibold text-white">{item.badge}</span>}
-          </a>
-        ))}
-      </nav>
-      <div className="border-t border-white/10 px-5 py-4 text-[12px] text-primary-soft">
-        <div className="flex items-center gap-2">
-          <span className="size-2 rounded-full bg-[#43d38f]" />
-          Registry sync live
-        </div>
-        <Link to="/" className="mt-3 inline-flex items-center gap-1.5 text-white/80 hover:text-white">
-          <Icon name="switch" size={15} /> {t('Switch portal')}
-        </Link>
-      </div>
-    </div>
+  // Close the mobile menu if the window grows past the breakpoint
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const onChange = () => mq.matches && setOpen(false)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+
+  const item = (n, mobile) => (
+    <a
+      key={n.label}
+      href={n.to ? `#${n.to}` : undefined}
+      aria-current={n.active ? 'page' : undefined}
+      aria-disabled={!n.to || undefined}
+      onClick={() => setOpen(false)}
+      className={cx(
+        'flex items-center gap-2 text-[14px] whitespace-nowrap transition-colors',
+        mobile ? 'border-l-3 px-4 py-3' : 'h-12 border-b-3 px-4',
+        n.active ? 'border-saffron-2 bg-white/10 font-semibold text-white' : 'border-transparent text-white/80',
+        n.to ? 'hover:bg-white/10 hover:text-white' : 'cursor-default opacity-55',
+      )}
+    >
+      {t(n.label)}
+      {n.badge && <span className="rounded-sm bg-err px-1.5 py-px text-[11px] font-semibold text-white">{n.badge}</span>}
+    </a>
   )
 
   return (
-    <div className="flex min-h-screen flex-col lg:pl-62">
+    <div className="flex min-h-screen flex-col">
       <GovStrip />
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-62 lg:block">{sidebar}</aside>
 
-      {open && (
-        <div className="fixed inset-0 z-50 lg:hidden" onClick={() => setOpen(false)}>
-          <div className="absolute inset-0 bg-primary/40" />
-          <aside className="absolute inset-y-0 left-0 w-65" onClick={(e) => e.stopPropagation()}>
-            {sidebar}
-          </aside>
-        </div>
-      )}
+      {/* Masthead */}
+      <header className="border-b border-line-soft bg-card">
+        <div className="mx-auto flex max-w-350 items-center gap-4 px-4 py-4 sm:px-6 lg:px-8">
+          <Link to="/" className="flex min-w-0 items-center gap-3" aria-label="APAAR Setu home">
+            <LogoMark size={44} />
+            <div className="min-w-0 leading-tight">
+              <div className="flex items-baseline gap-2">
+                <span className="font-display text-[20px] font-bold text-primary">APAAR Setu</span>
+                <span lang="hi" className="text-[15px] font-semibold text-primary-3">
+                  अपार सेतु
+                </span>
+              </div>
+              <div className="truncate text-[13px] text-muted">
+                {subtitle}
+                {context && <span className="hidden sm:inline"> · {context}</span>}
+              </div>
+            </div>
+          </Link>
 
-      <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-line-soft bg-surface/95 px-4 backdrop-blur sm:px-6">
-        <button type="button" className="rounded-md p-2 text-ink hover:bg-surface-mid lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
-          <Icon name="menu" />
-        </button>
-        <nav aria-label="Breadcrumb" className="hidden min-w-0 flex-1 items-center gap-1.5 truncate text-[13px] text-muted md:flex">
-          {crumbs.map((c, i) => (
-            <span key={c} className={cx('truncate', i === crumbs.length - 1 && 'font-medium text-ink')}>
-              {i > 0 && <span className="mr-1.5 text-subtle">/</span>}
-              {t(c)}
-            </span>
-          ))}
-        </nav>
-        <div className="flex-1 md:hidden" />
-        {topExtra}
-        <div className="flex items-center gap-3 border-l border-line-soft pl-3">
-          <div className="hidden text-right leading-tight sm:block">
-            <div className="text-[13.5px] font-semibold text-ink">{user.name}</div>
-            <div className="text-[12px] text-muted">{user.role}</div>
+          <div className="ml-auto flex items-center gap-4">
+            {topExtra}
+            <div className="hidden items-center gap-1.5 text-[12.5px] text-muted lg:flex">
+              <span className="size-2 rounded-full bg-ok" />
+              Registry sync live
+            </div>
+            <div className="flex items-center gap-3 border-line-soft lg:border-l lg:pl-4">
+              <div className="hidden text-right leading-tight sm:block">
+                <div className="text-[13.5px] font-semibold text-ink">{user.name}</div>
+                <div className="text-[12px] text-muted">{user.role}</div>
+              </div>
+              <Avatar name={user.name} size={38} />
+            </div>
           </div>
-          <Avatar name={user.name} size={36} />
         </div>
       </header>
 
+      {/* Menu bar */}
+      <nav aria-label="Main" className="sticky top-0 z-30 bg-primary-2 text-white shadow-sm">
+        <div className="mx-auto flex max-w-350 items-stretch px-0 sm:px-2 lg:px-4">
+          <button
+            type="button"
+            className="flex h-12 items-center gap-2 px-4 text-[14px] font-semibold md:hidden"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            aria-controls="mobile-menu"
+          >
+            <Icon name={open ? 'x' : 'menu'} size={20} />
+            Menu
+          </button>
+          <div className="hidden min-w-0 flex-1 overflow-x-auto md:flex">{nav.map((n) => item(n, false))}</div>
+          <Link
+            to="/"
+            className="ml-auto flex h-12 items-center gap-1.5 px-4 text-[13px] whitespace-nowrap text-white/80 hover:bg-white/10 hover:text-white"
+          >
+            <Icon name="switch" size={15} />
+            {t('Switch portal')}
+          </Link>
+        </div>
+        {open && (
+          <div id="mobile-menu" className="border-t border-white/10 pb-2 md:hidden">
+            {nav.map((n) => item(n, true))}
+          </div>
+        )}
+      </nav>
+
       <main id="main" tabIndex={-1} className="mx-auto w-full max-w-350 flex-1 px-4 py-6 outline-none sm:px-6 lg:px-8">
+        <nav aria-label="Breadcrumb" className="mb-5 flex flex-wrap items-center gap-1.5 text-[13px] text-muted">
+          <Link to="/" className="hover:text-ink hover:underline">
+            Home
+          </Link>
+          {crumbs.map((c, i) => (
+            <span key={c} className="flex items-center gap-1.5">
+              <Icon name="chevronRight" size={13} className="text-subtle" />
+              <span className={cx(i === crumbs.length - 1 && 'font-medium text-ink')} aria-current={i === crumbs.length - 1 ? 'page' : undefined}>
+                {t(c)}
+              </span>
+            </span>
+          ))}
+        </nav>
         {children}
       </main>
       <GovFooter />

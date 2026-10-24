@@ -117,3 +117,5 @@ html[data-contrast="high"] .text-primary { color: #ffff00; }
 html[data-contrast="high"] .seat-fill { background: #ffff00; }
 html[data-contrast="high"] button.bg-primary-2 { background: #ffff00; color: #000; }
 html[data-contrast="high"] [class*="border"] { border-color: #8a8a8a; }
+html[data-contrast="high"] nav[aria-label="Main"] a { border-color: transparent; text-decoration: none; }
+html[data-contrast="high"] nav[aria-label="Main"] a[aria-current="page"] { border-color: #ffff00; color: #ffff00; }
